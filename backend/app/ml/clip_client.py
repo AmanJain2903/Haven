@@ -1,11 +1,14 @@
 from sentence_transformers import SentenceTransformer
 from PIL import Image
 import pillow_heif # <--- CRITICAL: Registers HEIC support for the AI too
+import os
 
-# Load the model once when the app starts
+modelName = os.getenv("CLIP_SERVICE_MODEL", "clip-ViT-B-32")
+
+# Loads the model once when the app starts
 # This downloads about 300MB the first time
 print("Loading AI Model... (This might take a minute)")
-model = SentenceTransformer('clip-ViT-B-32')
+model = SentenceTransformer(modelName) # 512 Dimenesional Vectors are expected
 print("AI Model Loaded!")
 
 def generate_embedding(image_path: str):
@@ -14,7 +17,6 @@ def generate_embedding(image_path: str):
     """
     try:
         img = Image.open(image_path)
-        # The model "looks" at the image here
         embedding = model.encode(img)
         return embedding.tolist()
     except Exception as e:

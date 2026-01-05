@@ -1,7 +1,8 @@
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean
 from sqlalchemy.sql import func
-from pgvector.sqlalchemy import Vector  # <--- CORRECT IMPORT
+from pgvector.sqlalchemy import Vector
 from app.core.database import Base
+import os
 
 class Image(Base):
     __tablename__ = "images"
@@ -21,7 +22,8 @@ class Image(Base):
     longitude = Column(Float, nullable=True)
 
     # AI Embedding Vector (512 dimensions for CLIP ViT-B-32)
-    embedding = Column(Vector(512))
+    dimension = int(os.getenv("CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION", 512))
+    embedding = Column(Vector(dimension))
     
     # Status
     is_processed = Column(Boolean, default=False)
