@@ -6,11 +6,11 @@ from pillow_heif import register_heif_opener
 from sqlalchemy.orm import Session
 from app.models import Image
 
-# Register HEIC support
+# Register HEIC support (More images to be supported in later updates of Haven)
 register_heif_opener()
 
 def get_decimal_from_dms(dms, ref):
-    """Helper to convert degrees/minutes/seconds to decimal."""
+    """Helper to convert degrees/minutes/seconds format to decimal format."""
     degrees = dms[0]
     minutes = dms[1]
     seconds = dms[2]
@@ -29,13 +29,13 @@ def get_geotagging(img):
         if not exif:
             return None
             
-        # 34853 is the tag ID for GPSInfo
+        # 34853 is the tag ID for GPSInfo in Exif
         gps_info = exif.get_ifd(34853)
         
         if not gps_info:
             return None
 
-        # Convert keys from IDs to Names (e.g., 1 -> 'GPSLatitudeRef')
+        # Convert keys from IDs to Names (1 -> 'GPSLatitudeRef', 2-> 'GPSLatitude', 3 -> 'GPSLongitudeRef', 4 -> 'GPSLongitude')
         geotagging = {}
         for key, val in gps_info.items():
             name = ExifTags.GPSTAGS.get(key)
@@ -50,16 +50,15 @@ def get_geotagging(img):
 
 def scan_directory(directory_path: str, db: Session):
     print(f"Scanning directory: {directory_path}")
+
     count = 0
-    
     for root, dirs, files in os.walk(directory_path):
         for file in files:
-            # Added .heic and .heif to supported extensions
             if file.lower().endswith(('.jpg', '.jpeg', '.png', '.heic', '.heif')):
                 file_path = os.path.join(root, file)
                 
                 # Skip if already exists
-                existing = db.query(Image).filter(Image.file_path == file_path).first()
+                existing = db.query(Image).filter(Image.filename == file).first()
                 if existing:
                     continue
 
@@ -67,10 +66,9 @@ def scan_directory(directory_path: str, db: Session):
                     img = PILImage.open(file_path)
                     
                     # 1. Get Date
+                    capture_date = datetime.now() # Default
                     # Try getting the standard Exif object
                     exif = img.getexif()
-                    capture_date = datetime.now() # Default
-                    
                     if exif:
                         # 36867 = DateTimeOriginal, 306 = DateTime
                         date_str = exif.get(36867) or exif.get(306)
@@ -78,7 +76,7 @@ def scan_directory(directory_path: str, db: Session):
                             try:
                                 capture_date = datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
                             except:
-                                pass # Keep default if parse fails
+                                pass # Keep default if parse fails - Todays date
                         
                     # 2. Get GPS
                     lat = None
@@ -107,5 +105,5 @@ def scan_directory(directory_path: str, db: Session):
                 except Exception as e:
                     print(f"Error processing {file}: {e}")
 
-    db.commit()
+    db.commit() # All or nothing principle follwed here
     return count
