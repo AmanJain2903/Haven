@@ -1,0 +1,53 @@
+# Auto-labeling configuration for PRs based on changed files
+
+'backend':
+  - changed-files:
+    - any-glob-to-any-file: 'backend/**/*'
+
+'frontend':
+  - changed-files:
+    - any-glob-to-any-file: 'frontend/**/*'
+
+'tests':
+  - changed-files:
+    - any-glob-to-any-file: 'backend/tests/**/*'
+
+'documentation':
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
+      - 'docs/**/*'
+
+'dependencies':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'backend/requirements.txt'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+
+'database':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'backend/app/models.py'
+      - 'backend/app/core/database.py'
+
+'api':
+  - changed-files:
+    - any-glob-to-any-file: 'backend/app/api/**/*'
+
+'ml/ai':
+  - changed-files:
+    - any-glob-to-any-file: 'backend/app/ml/**/*'
+
+'docker':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'Dockerfile*'
+      - 'docker-compose*.yml'
+      - '.dockerignore'
+
+'ci/cd':
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/workflows/**/*'
+      - 'codecov.yml'

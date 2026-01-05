@@ -1,0 +1,44 @@
+# Codecov Configuration
+# https://docs.codecov.io/docs/codecov-yaml
+
+coverage:
+  precision: 2
+  round: down
+  range: "60...100"
+  
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 2%
+        if_ci_failed: error
+    
+    patch:
+      default:
+        target: 70%
+        threshold: 5%
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+  require_base: no
+  require_head: yes
+
+ignore:
+  - "backend/tests/**/*"
+  - "backend/htmlcov/**/*"
+  - "**/__pycache__/**/*"
+  - "backend/app/__init__.py"
+  - "backend/app/api/__init__.py"
+  - "backend/app/api/v1/__init__.py"
+  - "backend/app/api/v1/endpoints/__init__.py"
+  - "docker-data/**/*"
+  - "haven_venv/**/*"
+  - "frontend/**/*"
+
+flags:
+  unittests:
+    paths:
+      - backend/app/
+    carryforward: true

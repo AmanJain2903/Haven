@@ -1,10 +1,14 @@
-# Haven
-The goal is to solve the "Storage Full" crisis by reclaiming data sovereignty. Haven moves your digital life to local hardware (SSD/HDD/NAS) without sacrificing the intelligence of the cloud. By running SOTA AI models locally, Haven provides semantic search, facial recognition, and geospatial grouping, ensuring your memories remain safe &amp; private.
+# Haven - Self-Hosted Intelligent Photo Management
 
-![Status](https://img.shields.io/badge/Status-In_Development-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Python](https://img.shields.io/badge/Backend-FastAPI-009688)
-![React](https://img.shields.io/badge/Frontend-React-61DAFB)
+[![CI/CD Pipeline](https://github.com/AmanJain2903/Haven/actions/workflows/ci.yml/badge.svg)](https://github.com/AmanJain2903/Haven/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/AmanJain2903/Haven/branch/main/graph/badge.svg)](https://codecov.io/gh/AmanJain2903/Haven)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Status](https://img.shields.io/badge/Status-In_Development-blue)](https://github.com/AmanJain2903/Haven)
+![Backend](https://img.shields.io/badge/Backend-FastAPI-009688)
+![Frontend](https://img.shields.io/badge/Frontend-React-61DAFB)
+
+The goal is to solve the "Storage Full" crisis by reclaiming data sovereignty. Haven moves your digital life to local hardware (SSD/HDD/NAS) without sacrificing the intelligence of the cloud. By running SOTA AI models locally, Haven provides semantic search, facial recognition, and geospatial grouping, ensuring your memories remain safe &amp; private.
 
 **Haven** is a self-hosted, intelligent Digital Asset Management (DAM) system designed to replace iCloud and Google Photos. It restores ownership of your memories by running state-of-the-art AI models locally on your own hardware.
 

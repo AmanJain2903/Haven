@@ -1,0 +1,90 @@
+name: Coverage Badge
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  coverage:
+    name: Update Coverage Badge
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: ankane/pgvector:latest
+        env:
+          POSTGRES_USER: haven_admin
+          POSTGRES_PASSWORD: haven_pass
+          POSTGRES_DB: haven_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create .env file
+        working-directory: ./backend
+        run: |
+          cat > .env << EOF
+          POSTGRES_USER=haven_admin
+          POSTGRES_PASSWORD=haven_pass
+          POSTGRES_DB=haven_db
+          POSTGRES_HOST=localhost
+          POSTGRES_PORT=5432
+          CLIP_SERVICE_MODEL=clip-ViT-B-32
+          CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION=512
+          EOF
+
+      - name: Run tests with coverage
+        working-directory: ./backend
+        run: |
+          pytest tests/ \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term \
+            -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./backend/coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Extract coverage percentage
+        id: coverage
+        working-directory: ./backend
+        run: |
+          COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(f\"{float(root.attrib['line-rate']) * 100:.1f}\")")
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Coverage: $COVERAGE%"
+
+      - name: Create coverage badge
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ secrets.GIST_ID }}
+          filename: haven-coverage.json
+          label: coverage
+          message: ${{ steps.coverage.outputs.percentage }}%
+          valColorRange: ${{ steps.coverage.outputs.percentage }}
+          maxColorRange: 100
+          minColorRange: 0
