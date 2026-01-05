@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-black dark:bg-black bg-gray-100;
+  }
+  
+  body {
+    @apply bg-gradient-to-br 
+           from-gray-100 via-gray-50 to-slate-100 
+           dark:from-slate-950 dark:via-slate-900 dark:to-black 
+           text-slate-800 dark:text-white 
+           antialiased;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply backdrop-blur-xl 
+           bg-white/70 border border-slate-200/60
+           dark:bg-white/10 dark:border dark:border-white/20;
+  }
+  
+  .glass-hover {
+    @apply hover:bg-white/80 hover:border-slate-300/70
+           dark:hover:bg-white/15 dark:hover:border-white/30 
+           transition-all duration-300;
+  }
+}

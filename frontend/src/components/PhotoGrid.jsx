@@ -1,0 +1,255 @@
+import { motion } from 'framer-motion';
+import { Heart, Share2, Download, MoreVertical } from 'lucide-react';
+import { useState } from 'react';
+import Masonry from "react-masonry-css";
+
+const breakpointColumnsObj = {
+  default: 5,
+  1280: 4,
+  1024: 3,
+  768: 2,
+  640: 1,
+};
+
+
+// Dummy photo data from Unsplash with mixed orientations
+const basePhotos = [
+  { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&h=800', title: 'Mountain Vista', location: 'Iceland', orientation: 'landscape' },
+  { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=500&h=700', title: 'Sunset Coast', location: 'California', orientation: 'portrait' },
+  { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&h=700', title: 'Portrait', location: 'Studio', orientation: 'portrait' },
+  { url: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=600&h=400', title: 'Foggy Lake', location: 'Norway', orientation: 'landscape' },
+  { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&h=700', title: 'Man Portrait', location: 'Berlin', orientation: 'portrait' },
+  { url: 'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=600&h=400', title: 'Arch Rock', location: 'Dorset', orientation: 'landscape' },
+  { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500&h=700', title: 'Woman Portrait', location: 'Paris', orientation: 'portrait' },
+  { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&h=400', title: 'Coastal Cliffs', location: 'Ireland', orientation: 'landscape' },
+  { url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&h=700', title: 'Fashion', location: 'Milan', orientation: 'portrait' },
+  { url: 'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=600&h=400', title: 'Sunset Sky', location: 'Malibu', orientation: 'landscape' },
+  { url: 'https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=500&h=700', title: 'Profile', location: 'NYC', orientation: 'portrait' },
+  { url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=600&h=400', title: 'Misty Forest', location: 'Oregon', orientation: 'landscape' },
+  { url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=500&h=700', title: 'Beauty', location: 'LA', orientation: 'portrait' },
+  { url: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=600&h=400', title: 'Mountain Range', location: 'Switzerland', orientation: 'landscape' },
+];
+
+// Generate 100 photos with sequential IDs
+const photos = Array.from({ length: 50 }, (_, i) => {
+  const basePhoto = basePhotos[i % basePhotos.length];
+  return {
+    ...basePhoto,
+    id: i + 1,
+  };
+});
+
+
+function PhotoCard({ photo, index }) {
+  const [isHovered, setIsHovered] = useState(false);
+  
+  // Random delay and duration for async glow animation
+  const glowDelay = index * 0.4; // Stagger the start
+  const glowDuration = 3 + (index % 3) * 0.5; // Vary duration between 3-4.5s
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 100, scale: 0.8 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{
+        duration: 0.6,
+        delay: index * 0.001,
+        type: "spring",
+        stiffness: 100,
+        damping: 12,
+      }}
+      whileHover={{ scale: 1.02, zIndex: 10 }}
+      onHoverStart={() => setIsHovered(true)}
+      onHoverEnd={() => setIsHovered(false)}
+      className="relative group cursor-pointer mb-4 break-inside-avoid"
+    >
+      <div
+        className={`
+          relative overflow-hidden rounded-2xl
+          transition-all duration-500
+          ${
+            isHovered
+              ? 'shadow-glow-cyan border-2 border-purple-400/50 dark:border-cyan-400/40'
+              : 'shadow-xl border-2 border-slate-200/40 dark:border-white/10'
+          }
+        `}
+      >
+        {/* Image */}
+        <img
+          src={photo.url}
+          alt={photo.title}
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+
+        {/* Gradient Overlay */}
+        <div
+          className={`
+            absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent
+            transition-opacity duration-500
+            ${isHovered ? 'opacity-100' : 'opacity-0'}
+          `}
+        />
+
+        {/* Content Overlay */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: isHovered ? 1 : 0, y: isHovered ? 0 : 20 }}
+          transition={{ duration: 0.3 }}
+          className="absolute inset-x-0 bottom-0 p-4"
+        >
+          <div className="space-y-2">
+            <h3 className="text-white font-semibold text-lg tracking-wide drop-shadow-lg">
+              {photo.title}
+            </h3>
+            <p className="text-purple-300 dark:text-cyan-300 text-sm flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full bg-purple-400 dark:bg-cyan-400" />
+              {photo.location}
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 mt-4">
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
+                       hover:bg-pink-500/30 hover:border-pink-400/50 
+                       transition-all duration-200 group/btn"
+            >
+              <Heart className="w-4 h-4 text-white/70 group-hover/btn:text-pink-400 transition-colors" />
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
+                       hover:bg-cyan-500/30 hover:border-cyan-400/50 
+                       transition-all duration-200 group/btn"
+            >
+              <Share2 className="w-4 h-4 text-white/70 group-hover/btn:text-cyan-400 transition-colors" />
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
+                       hover:bg-teal-500/30 hover:border-teal-400/50 
+                       transition-all duration-200 group/btn"
+            >
+              <Download className="w-4 h-4 text-white/70 group-hover/btn:text-teal-400 transition-colors" />
+            </motion.button>
+
+            <div className="flex-1" />
+
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
+                       hover:bg-white/20 transition-all duration-200"
+            >
+              <MoreVertical className="w-4 h-4 text-white/70" />
+            </motion.button>
+          </div>
+        </motion.div>
+
+
+        {/* Glow Effect on Hover */}
+        <motion.div
+          animate={{
+            opacity: isHovered ? [0.3, 0.6, 0.3] : 0,
+          }}
+          transition={{
+            duration: glowDuration,
+            repeat: Infinity,
+            ease: 'easeInOut',
+            delay: glowDelay,
+          }}
+          className="absolute inset-0 bg-gradient-to-br 
+                     from-purple-400/20 via-transparent to-indigo-400/20
+                     dark:from-cyan-500/20 dark:via-transparent dark:to-teal-500/20 
+                     pointer-events-none"
+        />
+      </div>
+    </motion.div>
+  );
+}
+
+export default function PhotoGrid() {
+  return (
+    <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
+      {/* Header Stats */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.3 }}
+        className="mb-8 flex items-center justify-between"
+      >
+        <div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r 
+                       from-purple-600 via-indigo-600 to-violet-600
+                       dark:from-white dark:via-cyan-100 dark:to-teal-100 
+                       bg-clip-text text-transparent mb-2">
+            Your Memories
+          </h1>
+          <p className="text-slate-600 dark:text-white/50 text-lg">
+            <span className="font-semibold text-purple-600 dark:text-cyan-400">{photos.length}</span> photos in your collection
+          </p>
+        </div>
+
+        {/* <div className="flex gap-3">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="glass-panel px-6 py-3 rounded-2xl font-medium 
+                     text-slate-800 dark:text-white
+                     hover:bg-white/85 dark:hover:bg-white/15 
+                     transition-all duration-300 flex items-center gap-2"
+          >
+            <span>All Photos</span>
+            <div className="w-2 h-2 rounded-full bg-purple-500 dark:bg-cyan-400 shadow-glow-cyan" />
+          </motion.button>
+        </div> */}
+      </motion.div>
+
+      {/* Masonry Photo Grid */}
+      {/* <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
+        {photos.map((photo, index) => (
+          <PhotoCard key={photo.id} photo={photo} index={index} />
+        ))}
+      </div> */}
+
+    
+
+<Masonry
+  breakpointCols={breakpointColumnsObj}
+  className="flex gap-4"
+  columnClassName="flex flex-col gap-1"
+>
+  {photos.map((photo, index) => (
+    <PhotoCard key={photo.id} photo={photo} index={index} />
+  ))}
+</Masonry>
+
+      {/* Load More */}
+      {/* <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1 }}
+        className="mt-12 flex justify-center"
+      >
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="glass-panel px-8 py-4 rounded-full font-medium text-lg
+                   text-slate-800 dark:text-white
+                   hover:bg-white/85 dark:hover:bg-white/15 
+                   hover:shadow-glow-cyan transition-all duration-300"
+        >
+          Load More Memories
+        </motion.button>
+      </motion.div> */}
+    </div>
+  );
+}
