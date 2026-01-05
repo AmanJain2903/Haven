@@ -1,0 +1,28 @@
+services:
+  # 1. The Database: PostgreSQL with Vector support
+  db:
+    image: ankane/pgvector:latest
+    container_name: haven_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker-data/postgres_db:/var/lib/postgresql/data
+
+  # 2. The Queue: Redis
+  redis:
+    image: redis:alpine
+    container_name: haven_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./docker-data/redis:/data
+
+volumes:
+  postgres_data:
+  redis_data:
