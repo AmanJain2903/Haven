@@ -10,17 +10,14 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.sql import func
 
-# Import and patch models BEFORE importing main
-import app.models
-from app.core.database import get_db
-
+# Set environment variable to indicate we're in test mode
+os.environ["TESTING"] = "1"
 
 # Use in-memory SQLite for testing (fast, isolated)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
 # Create a new Base for testing
 TestBase = declarative_base()
-
 
 # Test version of Image model compatible with SQLite
 class Image(TestBase):
@@ -40,10 +37,19 @@ class Image(TestBase):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
-# Monkey-patch the Image model in app.models for testing
-app.models.Image = Image
+# Monkey-patch BEFORE any app imports
+import app.models
+import app.core.database
 
-# NOW import the FastAPI app (after patching)
+# Replace the Image model
+app.models.Image = Image
+# Replace the Base to prevent table creation with Vector type
+app.models.Base = TestBase
+
+# Store original get_db for reference
+from app.core.database import get_db
+
+# NOW import the FastAPI app (after all patching)
 from app.main import app as fastapi_app
 
 @pytest.fixture(scope="function")

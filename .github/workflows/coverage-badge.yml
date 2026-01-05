@@ -55,6 +55,19 @@ jobs:
           CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION=512
           EOF
 
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U haven_admin; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Initialize pgvector extension
+        env:
+          PGPASSWORD: haven_pass
+        run: |
+          psql -h localhost -U haven_admin -d haven_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
       - name: Run tests with coverage
         working-directory: ./backend
         env:

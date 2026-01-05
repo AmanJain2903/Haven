@@ -75,6 +75,12 @@ jobs:
             sleep 2
           done
 
+      - name: Initialize pgvector extension
+        env:
+          PGPASSWORD: haven_pass
+        run: |
+          psql -h localhost -U haven_admin -d haven_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
       - name: Run tests with coverage
         working-directory: ./backend
         env:
