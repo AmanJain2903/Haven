@@ -211,3 +211,6 @@ docker-data/
 
 # Testing
 test_photos/
+
+# venv
+haven_venv/
