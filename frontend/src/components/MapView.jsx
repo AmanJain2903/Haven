@@ -6,6 +6,8 @@ import { divIcon } from 'leaflet';
 import { motion } from 'framer-motion';
 import { MapPin } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useState } from 'react';
+import ImageViewer from './ImageViewer';
 
 // Fix for default Leaflet markers not showing in React
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -21,6 +23,9 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 const MapView = ({ photos }) => {
   const { isDark } = useTheme();
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [clusterPhotos, setClusterPhotos] = useState([]);
   
   // Filter out photos that don't have GPS data
   const geotaggedPhotos = photos.filter(p => p.latitude && p.longitude);
@@ -54,15 +59,40 @@ const MapView = ({ photos }) => {
     return 10;
   };
 
+  // Handle photo click from marker
+  const handlePhotoClick = (photo) => {
+    const index = geotaggedPhotos.findIndex(p => p.id === photo.id);
+    setSelectedPhoto(photo);
+    setSelectedIndex(index);
+    setClusterPhotos(geotaggedPhotos);
+  };
+
+  const handleClose = () => {
+    setSelectedPhoto(null);
+    setSelectedIndex(null);
+    setClusterPhotos([]);
+  };
+
+  const handleNext = () => {
+    if (selectedIndex !== null && selectedIndex < clusterPhotos.length - 1) {
+      const nextIndex = selectedIndex + 1;
+      setSelectedIndex(nextIndex);
+      setSelectedPhoto(clusterPhotos[nextIndex]);
+    }
+  };
+
+  const handlePrev = () => {
+    if (selectedIndex !== null && selectedIndex > 0) {
+      const prevIndex = selectedIndex - 1;
+      setSelectedIndex(prevIndex);
+      setSelectedPhoto(clusterPhotos[prevIndex]);
+    }
+  };
+
   return (
     <div className="relative">
       {/* Header Stats */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.3 }}
-        className="mb-8 flex items-center justify-between"
-      >
+      <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r 
                        from-purple-600 via-indigo-600 to-violet-600
@@ -74,35 +104,13 @@ const MapView = ({ photos }) => {
             <span className="font-semibold text-purple-600 dark:text-cyan-400">{geotaggedPhotos.length}</span> geotagged photos
           </p>
         </div>
-      </motion.div>
+      </div>
 
       {/* Map Container with Glassmorphism */}
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
+      <div 
         style={{ height: 'calc(100vh - 20rem)' }} 
         className="relative rounded-3xl overflow-hidden glass-panel shadow-2xl border border-purple-400/20 dark:border-cyan-400/20"
       >
-        {/* Animated Morphing Blob Background */}
-        <motion.div
-          animate={{
-            borderRadius: [
-              '60% 40% 30% 70% / 60% 30% 70% 40%',
-              '30% 60% 70% 40% / 50% 60% 30% 60%',
-              '60% 40% 30% 70% / 60% 30% 70% 40%',
-            ],
-            scale: [1, 1.08, 1],
-            opacity: [0.15, 0.25, 0.15],
-          }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-          className="absolute -inset-20 bg-gradient-to-r from-purple-600/60 via-indigo-600/50 to-violet-600/60 
-                     dark:from-cyan-600/60 dark:via-teal-600/50 dark:to-blue-600/60 blur-3xl pointer-events-none z-0"
-        />
 
         <div className="relative z-10 h-full w-full rounded-3xl overflow-hidden">
           <MapContainer 
@@ -128,11 +136,31 @@ const MapView = ({ photos }) => {
             {/* Marker Cluster Group */}
             <MarkerClusterGroup
               chunkedLoading
-              spiderfyOnMaxZoom={true}
+              zoomToBoundsOnClick={false}
+              showCoverageOnHover={false}
+              maxClusterRadius={80}
               iconCreateFunction={(cluster) => {
                 const count = cluster.getChildCount();
+                
+                // Add click handler to cluster icon
+                setTimeout(() => {
+                  const clusterElement = cluster.getElement();
+                  if (clusterElement && !clusterElement.dataset.clickHandlerAdded) {
+                    clusterElement.dataset.clickHandlerAdded = 'true';
+                    clusterElement.style.cursor = 'pointer';
+                    // Add click handler to entire cluster element
+                    clusterElement.addEventListener('click', (e) => {
+                      e.stopPropagation();
+                      // Show all geotagged photos when clicking any cluster
+                      setClusterPhotos(geotaggedPhotos);
+                      setSelectedPhoto(geotaggedPhotos[0]);
+                      setSelectedIndex(0);
+                    });
+                  }
+                }, 0);
+                
                 return L.divIcon({
-                  html: `<div class="flex items-center justify-center w-12 h-12 rounded-full glass-panel border-2 border-purple-400 dark:border-cyan-400 shadow-glow-cyan">
+                  html: `<div class="flex items-center justify-center w-12 h-12 rounded-full glass-panel border-2 border-purple-400 dark:border-cyan-400 shadow-glow-cyan hover:scale-110 transition-transform" style="pointer-events: auto;">
                           <span class="text-sm font-bold bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-cyan-400 dark:to-teal-400 bg-clip-text text-transparent">${count}</span>
                         </div>`,
                   className: 'custom-cluster-icon',
@@ -145,6 +173,10 @@ const MapView = ({ photos }) => {
                 <Marker 
                   key={photo.id} 
                   position={[photo.latitude, photo.longitude]}
+                  photoId={photo.id}
+                  eventHandlers={{
+                    click: () => handlePhotoClick(photo),
+                  }}
                   icon={L.divIcon({
                     className: 'bg-transparent',
                     html: `<div class="w-12 h-12 rounded-xl overflow-hidden border-2 border-purple-400 dark:border-cyan-400 shadow-lg hover:scale-110 transition-transform duration-200 cursor-pointer glass-panel">
@@ -153,29 +185,24 @@ const MapView = ({ photos }) => {
                     iconSize: [48, 48],
                     iconAnchor: [24, 24]
                   })}
-                >
-                  <Popup 
-                    className="custom-popup"
-                    maxWidth={250}
-                  >
-                    <div className="glass-panel rounded-xl p-3 border border-purple-400/30 dark:border-cyan-400/30">
-                      <img src={photo.thumbnail_url} className="w-full h-40 object-cover rounded-lg mb-3 shadow-lg" alt={photo.filename} />
-                      <p className="text-sm font-medium text-slate-800 dark:text-white mb-1">{photo.filename || 'Untitled'}</p>
-                      <p className="text-xs text-slate-500 dark:text-white/50">
-                        {new Date(photo.date).toLocaleDateString('en-US', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </p>
-                    </div>
-                  </Popup>
-                </Marker>
+                />
               ))}
             </MarkerClusterGroup>
           </MapContainer>
         </div>
-      </motion.div>
+      </div>
+
+      {/* Image Viewer */}
+      {selectedPhoto && (
+        <ImageViewer
+          photo={selectedPhoto}
+          onClose={handleClose}
+          onNext={handleNext}
+          onPrev={handlePrev}
+          currentIndex={selectedIndex}
+          totalPhotos={clusterPhotos.length}
+        />
+      )}
     </div>
   );
 };

@@ -17,6 +17,8 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
     e.preventDefault();
     if (onSearch && searchValue.trim()) {
       onSearch(searchValue);
+      setIsFocused(false); // Hide suggestions after search
+      document.activeElement?.blur(); // Remove focus from input
     }
   };
 
@@ -24,6 +26,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
     setSearchValue(suggestion);
     if (onSearch) {
       onSearch(suggestion);
+      setIsFocused(false); // Hide suggestions after search
     }
   };
 

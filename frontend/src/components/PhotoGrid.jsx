@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Heart, Share2, Download, MoreVertical } from 'lucide-react';
 import { useState } from 'react';
 import Masonry from "react-masonry-css";
+import ImageViewer from './ImageViewer';
 
 const breakpointColumnsObj = {
   default: 5,
@@ -11,7 +12,7 @@ const breakpointColumnsObj = {
   640: 1,
 };
 
-function PhotoCard({ photo, index}) {
+function PhotoCard({ photo, index, onClick }) {
   const [isHovered, setIsHovered] = useState(false);
   
   // Random delay and duration for async glow animation
@@ -33,6 +34,7 @@ function PhotoCard({ photo, index}) {
       whileHover={{ scale: 1.02, zIndex: 10 }}
       onHoverStart={() => setIsHovered(true)}
       onHoverEnd={() => setIsHovered(false)}
+      onClick={onClick}
       className="relative group cursor-pointer mb-4 break-inside-avoid"
     >
       <div
@@ -85,6 +87,10 @@ function PhotoCard({ photo, index}) {
           {/* Action Buttons */}
           <div className="flex items-center gap-2 mt-4">
             <motion.button
+              onClick={(e) => {
+                e.stopPropagation();
+                // TODO: Add favorite functionality
+              }}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
@@ -95,6 +101,10 @@ function PhotoCard({ photo, index}) {
             </motion.button>
 
             <motion.button
+              onClick={(e) => {
+                e.stopPropagation();
+                // TODO: Add share functionality
+              }}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
@@ -105,6 +115,10 @@ function PhotoCard({ photo, index}) {
             </motion.button>
 
             <motion.button
+              onClick={(e) => {
+                e.stopPropagation();
+                // TODO: Add download functionality
+              }}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
@@ -117,6 +131,10 @@ function PhotoCard({ photo, index}) {
             <div className="flex-1" />
 
             <motion.button
+              onClick={(e) => {
+                e.stopPropagation();
+                // TODO: Add more options menu
+              }}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
@@ -129,7 +147,7 @@ function PhotoCard({ photo, index}) {
 
 
         {/* Glow Effect on Hover */}
-        <motion.div
+        {/* <motion.div
           animate={{
             opacity: isHovered ? [0.3, 0.6, 0.3] : 0,
           }}
@@ -143,13 +161,42 @@ function PhotoCard({ photo, index}) {
                      from-purple-400/20 via-transparent to-indigo-400/20
                      dark:from-cyan-500/20 dark:via-transparent dark:to-teal-500/20 
                      pointer-events-none"
-        />
+        /> */}
       </div>
     </motion.div>
   );
 }
 
 export default function PhotoGrid({ photos = [], loading = false, searchQuery = '' }) {
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+
+  const handlePhotoClick = (photo, index) => {
+    setSelectedPhoto(photo);
+    setSelectedIndex(index);
+  };
+
+  const handleClose = () => {
+    setSelectedPhoto(null);
+    setSelectedIndex(null);
+  };
+
+  const handleNext = () => {
+    if (selectedIndex !== null && selectedIndex < photos.length - 1) {
+      const nextIndex = selectedIndex + 1;
+      setSelectedIndex(nextIndex);
+      setSelectedPhoto(photos[nextIndex]);
+    }
+  };
+
+  const handlePrev = () => {
+    if (selectedIndex !== null && selectedIndex > 0) {
+      const prevIndex = selectedIndex - 1;
+      setSelectedIndex(prevIndex);
+      setSelectedPhoto(photos[prevIndex]);
+    }
+  };
+
   // Format search query: capitalize first letter after periods, show first 4 words
   const formatSearchQuery = (query) => {
     if (!query) return '';
@@ -237,9 +284,26 @@ export default function PhotoGrid({ photos = [], loading = false, searchQuery = 
   columnClassName="flex flex-col gap-1"
 >
   {photos.map((photo, index) => (
-    <PhotoCard key={photo.id} photo={photo} index={index} />
+    <PhotoCard 
+      key={photo.id} 
+      photo={photo} 
+      index={index} 
+      onClick={() => handlePhotoClick(photo, index)}
+    />
   ))}
 </Masonry>
+
+      {/* Image Viewer */}
+      {selectedPhoto && (
+        <ImageViewer
+          photo={selectedPhoto}
+          onClose={handleClose}
+          onNext={handleNext}
+          onPrev={handlePrev}
+          currentIndex={selectedIndex}
+          totalPhotos={photos.length}
+        />
+      )}
 
       {/* Load More */}
       {/* <motion.div
