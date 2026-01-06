@@ -6,11 +6,71 @@ import SearchBar from './components/SearchBar';
 import PhotoGrid from './components/PhotoGrid';
 import { useTheme } from './contexts/ThemeContext';
 
+import { api } from './api';
+
 function App() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isToggleVisible, setIsToggleVisible] = useState(true);
   const [scrollTimeout, setScrollTimeout] = useState(null);
   const { isDark, toggleTheme } = useTheme();
+
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInputValue, setSearchInputValue] = useState('');
+
+  // Load photos on startup
+  useEffect(() => {
+    loadPhotos();
+  }, []);
+
+  const loadPhotos = async () => {
+    try {
+      const data = await api.getPhotos();
+      setPhotos(data);
+      console.log("Photos loaded:", data);
+    } catch (error) {
+      console.error("Failed to load photos:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get Image URL
+  const getImageUrl = (id) => {
+    return api.getImageUrl(id);
+  }
+
+  // Handle Search
+  const handleSearch = async (query) => {
+    if (!query || !query.trim()) {
+      setSearchQuery('');
+      setSearchInputValue(''); 
+      return loadPhotos();
+    }
+    
+    setLoading(true);
+    setSearchQuery(query);
+    setSearchInputValue(query);
+    try {
+      const results = await api.searchPhotos(query);
+      setPhotos(results);
+    } catch (e) {
+      console.error('Search error:', e);
+      setPhotos([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reset to all photos
+  const handleReset = () => {
+    setSearchQuery('');
+    setSearchInputValue('');
+    loadPhotos();
+  };
+
+
 
   // Scroll to top on page load
   useEffect(() => {
@@ -221,9 +281,9 @@ function App() {
         </motion.div>
       </motion.button>
 
-      <Sidebar />
-      <SearchBar />
-      <PhotoGrid />
+      <Sidebar onNavigate={handleReset} />
+      <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
+      <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} />
 
       {/* Vignette Effect */}
       <div className="fixed inset-0 pointer-events-none bg-gradient-to-t 

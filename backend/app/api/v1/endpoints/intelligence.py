@@ -39,6 +39,7 @@ def search_photos(query: str, threshold: float = 0.8, db: Session = Depends(get_
         score = round((1 - distance) * 100, 2)
         
         response.append({
+            "id": img.id,
             "filename": img.filename,
             "score": f"{score}%",
             "path": img.file_path,
