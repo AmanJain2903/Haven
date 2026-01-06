@@ -13,8 +13,16 @@ const navigationItems = [
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }) {
   const [activeItem, setActiveItem] = useState('photos');
+
+  const handleItemClick = (itemId) => {
+    setActiveItem(itemId);
+    if (itemId === 'photos' && onNavigate) {
+      onNavigate();
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    }
+  };
 
   return (
     <motion.aside
@@ -83,7 +91,7 @@ export default function Sidebar() {
                 initial={{ x: -50, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ delay: 0.1 * index, duration: 0.4 }}
-                onClick={() => setActiveItem(item.id)}
+                onClick={() => handleItemClick(item.id)}
                 className="relative group"
               >
                 {/* Glow Indicator Bar */}

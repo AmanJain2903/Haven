@@ -31,16 +31,16 @@ const basePhotos = [
 ];
 
 // Generate 100 photos with sequential IDs
-const photos = Array.from({ length: 50 }, (_, i) => {
-  const basePhoto = basePhotos[i % basePhotos.length];
-  return {
-    ...basePhoto,
-    id: i + 1,
-  };
-});
+// const photos = Array.from({ length: 50 }, (_, i) => {
+//   const basePhoto = basePhotos[i % basePhotos.length];
+//   return {
+//     ...basePhoto,
+//     id: i + 1,
+//   };
+// });
 
 
-function PhotoCard({ photo, index }) {
+function PhotoCard({ photo, index}) {
   const [isHovered, setIsHovered] = useState(false);
   
   // Random delay and duration for async glow animation
@@ -176,7 +176,43 @@ function PhotoCard({ photo, index }) {
   );
 }
 
-export default function PhotoGrid() {
+export default function PhotoGrid({ photos = [], loading = false, searchQuery = '' }) {
+  // Format search query: capitalize first letter after periods, show first 4 words
+  const formatSearchQuery = (query) => {
+    if (!query) return '';
+    
+    // Capitalize first letter of sentences (after periods and at start)
+    const formatted = query.toLowerCase().replace(/(^|\. )(\w)/g, (match) => match.toUpperCase());
+    
+    // Get first 4 words
+    const words = formatted.split(' ');
+    if (words.length > 4) {
+      return words.slice(0, 4).join(' ') + '...';
+    }
+    return formatted;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-purple-600/30 dark:border-cyan-400/30 border-t-purple-600 dark:border-t-cyan-400 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600 dark:text-white/50 text-lg">Loading your memories...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!photos || photos.length === 0) {
+    return (
+      <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-slate-600 dark:text-white/50 text-lg">No photos found</p>
+          <p className="text-slate-400 dark:text-white/30 text-sm mt-2">Scan a directory to get started</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
       {/* Header Stats */}
@@ -191,10 +227,10 @@ export default function PhotoGrid() {
                        from-purple-600 via-indigo-600 to-violet-600
                        dark:from-white dark:via-cyan-100 dark:to-teal-100 
                        bg-clip-text text-transparent mb-2">
-            Your Memories
+            {searchQuery ? `"${formatSearchQuery(searchQuery)}"` : 'Your Memories'}
           </h1>
           <p className="text-slate-600 dark:text-white/50 text-lg">
-            <span className="font-semibold text-purple-600 dark:text-cyan-400">{photos.length}</span> photos in your collection
+            <span className="font-semibold text-purple-600 dark:text-cyan-400">{photos.length}</span> {searchQuery ? 'search results' : 'photos in your collection'}
           </p>
         </div>
 

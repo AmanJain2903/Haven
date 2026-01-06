@@ -2,11 +2,30 @@ import { motion } from 'framer-motion';
 import { Search, Sparkles } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
-export default function SearchBar() {
+export default function SearchBar({onSearch, searchValue: externalSearchValue = '', onClearSearch}) {
   const [isFocused, setIsFocused] = useState(false);
-  const [searchValue, setSearchValue] = useState('');
+  const [searchValue, setSearchValue] = useState(externalSearchValue);
   const [isVisible, setIsVisible] = useState(true);
   const [scrollTimeout, setScrollTimeout] = useState(null);
+
+  // Sync external searchValue with internal state
+  useEffect(() => {
+    setSearchValue(externalSearchValue);
+  }, [externalSearchValue]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (onSearch && searchValue.trim()) {
+      onSearch(searchValue);
+    }
+  };
+
+  const handleSuggestionClick = (suggestion) => {
+    setSearchValue(suggestion);
+    if (onSearch) {
+      onSearch(suggestion);
+    }
+  };
 
   useEffect(() => {
     let lastScrollY = window.scrollY;
@@ -96,7 +115,7 @@ export default function SearchBar() {
                      blur-xl"
         />
 
-        <div className="relative flex items-center gap-4">
+        <form onSubmit={handleSearch} className="relative flex items-center gap-4">
           {/* Search Icon */}
           <motion.div
             animate={{
@@ -161,6 +180,7 @@ export default function SearchBar() {
           {/* Search Button */}
           {searchValue && (
             <motion.button
+              type="submit"
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0, opacity: 0 }}
@@ -175,7 +195,7 @@ export default function SearchBar() {
               Search
             </motion.button>
           )}
-        </div>
+        </form>
 
         {/* Liquid Border Animation */}
         <motion.div
@@ -227,6 +247,10 @@ export default function SearchBar() {
             {['Sunset beach', 'Mountain hiking', 'City lights', 'Family photos'].map((tag, i) => (
               <motion.button
                 key={tag}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // Prevent blur
+                  handleSuggestionClick(tag);
+                }}
                 style={{ willChange: "opacity" }}
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}

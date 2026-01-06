@@ -1,9 +1,16 @@
-from fastapi import Depends, APIRouter
+from fastapi import Depends, APIRouter, Response
 from sqlalchemy.orm import Session
 from app.core.database import get_db, engine
 from app import models
 from app.services.scanner import scan_directory 
 from app.ml.clip_client import generate_embedding
+from fastapi.responses import FileResponse
+from fastapi import HTTPException
+from typing import List
+from PIL import Image
+import pillow_heif
+import io
+
 
 router = APIRouter()
 
@@ -46,3 +53,60 @@ def process_images(limit: int = 50, db: Session = Depends(get_db)):
             
     db.commit()
     return {"status": "success", "processed": count}
+
+@router.get("/", response_model=List[dict])
+def get_images(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """
+    Fetch a list of images to display in the grid.
+    """
+    images = db.query(models.Image).offset(skip).limit(limit).all()
+    
+    # Transform to JSON
+    return [
+        {
+            "id": img.id,
+            "filename": img.filename,
+            "url": f"/api/v1/images/file/{img.id}", # Magic URL for the frontend
+            "date": img.capture_date
+        }
+        for img in images
+    ]
+
+@router.get("/file/{image_id}")
+def get_image_file(image_id: int, db: Session = Depends(get_db)):
+    """
+    Serve the actual image file from the hard drive.
+    Convert HEIC or HEIF to JPEG on the fly.
+    """
+    img = db.query(models.Image).filter(models.Image.id == image_id).first()
+    
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+        
+    # Check if it is an HEIC file
+    if img.file_path.lower().endswith(('.heic', '.heif')):
+        try:
+            # 1. Open the HEIC file
+            heif_file = pillow_heif.read_heif(img.file_path)
+            image = Image.frombytes(
+                heif_file.mode, 
+                heif_file.size, 
+                heif_file.data,
+                "raw",
+            )
+            
+            # 2. Convert to JPEG in memory (don't save to disk)
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format='JPEG', quality=80)
+            img_byte_arr = img_byte_arr.getvalue()
+
+            # 3. Return as a JPEG response
+            return Response(content=img_byte_arr, media_type="image/jpeg")
+            
+        except Exception as e:
+            print(f"Error converting HEIC: {e}")
+            # Fallback: try sending original if conversion fails
+            return FileResponse(img.file_path)
+
+    # For standard images (JPG, PNG), just send the file directly
+    return FileResponse(img.file_path)
