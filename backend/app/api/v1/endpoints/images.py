@@ -73,7 +73,23 @@ def get_images(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
             "image_url": f"/api/v1/images/file/{img.id}", # Magic URL for the full image
             "date": img.capture_date,
             "latitude": img.latitude,
-            "longitude": img.longitude
+            "longitude": img.longitude,
+            "city": img.city,
+            "state": img.state,
+            "country": img.country,
+            "width": img.width,
+            "height": img.height,
+            "megapixels": img.megapixels,
+            "metadata": {
+                "camera_make": img.camera_make,
+                "camera_model": img.camera_model,
+                "exposure_time": img.exposure_time,
+                "f_number": img.f_number,
+                "iso": img.iso,
+                "focal_length": img.focal_length,
+                "size_bytes": img.file_size
+        }
+            
         }
         for img in images
     ]

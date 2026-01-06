@@ -201,6 +201,19 @@ class TestGetImagesEndpoint:
         assert "date" in first_image
         assert "latitude" in first_image
         assert "longitude" in first_image
+        assert "width" in first_image
+        assert "height" in first_image
+        assert "megapixels" in first_image
+        assert "metadata" in first_image
+        # Check metadata structure
+        metadata = first_image["metadata"]
+        assert "camera_make" in metadata
+        assert "camera_model" in metadata
+        assert "exposure_time" in metadata
+        assert "f_number" in metadata
+        assert "iso" in metadata
+        assert "focal_length" in metadata
+        assert "size_bytes" in metadata
 
     def test_get_images_pagination_skip(self, client, sample_images, db_session):
         """Test pagination with skip parameter"""

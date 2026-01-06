@@ -108,19 +108,22 @@ class TestGetGeotagging:
 class TestScanDirectory:
     """Test suite for directory scanning"""
 
+    @patch('app.services.scanner.ensure_thumbnail')
     @patch('app.services.scanner.PILImage.open')
     @patch('app.services.scanner.os.walk')
     @patch('app.services.scanner.os.path.getsize')
-    def test_scan_finds_images(self, mock_getsize, mock_walk, mock_pil, db_session):
+    def test_scan_finds_images(self, mock_getsize, mock_walk, mock_pil, mock_thumbnail, db_session):
         """Test that scan finds and processes images"""
         # Mock directory structure
         mock_walk.return_value = [
             ('/test', [], ['photo1.jpg', 'photo2.png', 'document.txt'])
         ]
         mock_getsize.return_value = 1024000
+        mock_thumbnail.return_value = 'thumb_test.jpg'
         
-        # Mock PIL image
+        # Mock PIL image with size property
         mock_img = MagicMock()
+        mock_img.size = (4000, 3000)  # width, height
         mock_exif = MagicMock()
         mock_img.getexif.return_value = mock_exif
         mock_exif.get.return_value = None
@@ -135,16 +138,21 @@ class TestScanDirectory:
         images = db_session.query(Image).all()
         assert len(images) == 2
 
+    @patch('app.services.scanner.get_location_parts')
+    @patch('app.services.scanner.ensure_thumbnail')
     @patch('app.services.scanner.PILImage.open')
     @patch('app.services.scanner.os.walk')
     @patch('app.services.scanner.os.path.getsize')
-    def test_scan_with_gps_data(self, mock_getsize, mock_walk, mock_pil, db_session):
+    def test_scan_with_gps_data(self, mock_getsize, mock_walk, mock_pil, mock_thumbnail, mock_location, db_session):
         """Test scanning image with GPS data"""
         mock_walk.return_value = [('/test', [], ['gps_photo.jpg'])]
         mock_getsize.return_value = 2048000
+        mock_thumbnail.return_value = 'thumb_gps_photo.jpg'
+        mock_location.return_value = {'city': 'San Francisco', 'state': 'California', 'country': 'United States'}
         
         # Mock image with GPS
         mock_img = MagicMock()
+        mock_img.size = (3840, 2160)  # width, height
         mock_exif = MagicMock()
         mock_gps_ifd = {
             1: 'N',
@@ -171,6 +179,10 @@ class TestScanDirectory:
         image = db_session.query(Image).first()
         assert image.latitude is not None
         assert image.longitude is not None
+        assert image.city == 'San Francisco'
+        assert image.state == 'California'
+        assert image.country == 'United States'
+        mock_location.assert_called_once()
 
     @patch('app.services.scanner.PILImage.open')
     @patch('app.services.scanner.os.walk')
@@ -210,17 +222,26 @@ class TestScanDirectory:
         # Mock thumbnail creation to succeed
         mock_thumbnail.return_value = 'thumb_test.jpg'
         
+        # Create mock images with size property
+        mock_img1 = MagicMock()
+        mock_img1.size = (4000, 3000)
+        mock_img1.getexif.return_value = MagicMock(
+            get=MagicMock(return_value=None),
+            get_ifd=MagicMock(return_value=None)
+        )
+        
+        mock_img3 = MagicMock()
+        mock_img3.size = (3840, 2160)
+        mock_img3.getexif.return_value = MagicMock(
+            get=MagicMock(return_value=None),
+            get_ifd=MagicMock(return_value=None)
+        )
+        
         # First call succeeds, second fails, third succeeds
         mock_pil.side_effect = [
-            MagicMock(getexif=MagicMock(return_value=MagicMock(
-                get=MagicMock(return_value=None),
-                get_ifd=MagicMock(return_value=None)
-            ))),
+            mock_img1,
             Exception("Corrupted file"),
-            MagicMock(getexif=MagicMock(return_value=MagicMock(
-                get=MagicMock(return_value=None),
-                get_ifd=MagicMock(return_value=None)
-            )))
+            mock_img3
         ]
         
         with patch('app.services.scanner.os.path.getsize', return_value=1024):
@@ -229,16 +250,19 @@ class TestScanDirectory:
         # Should process 2 out of 3 images
         assert count == 2
 
+    @patch('app.services.scanner.ensure_thumbnail')
     @patch('app.services.scanner.PILImage.open')
     @patch('app.services.scanner.os.walk')
     @patch('app.services.scanner.os.path.getsize')
-    def test_scan_extracts_capture_date(self, mock_getsize, mock_walk, mock_pil, db_session):
+    def test_scan_extracts_capture_date(self, mock_getsize, mock_walk, mock_pil, mock_thumbnail, db_session):
         """Test extraction of capture date from EXIF"""
         mock_walk.return_value = [('/test', [], ['dated.jpg'])]
         mock_getsize.return_value = 1024000
+        mock_thumbnail.return_value = 'thumb_dated.jpg'
         
         # Mock image with date
         mock_img = MagicMock()
+        mock_img.size = (4000, 3000)
         mock_exif = MagicMock()
         mock_exif.get.return_value = '2024:12:25 14:30:00'  # DateTimeOriginal
         mock_exif.get_ifd.return_value = None
@@ -271,16 +295,18 @@ class TestScanDirectory:
             ])
         ]
         
-        with patch('app.services.scanner.PILImage.open') as mock_pil:
-            with patch('app.services.scanner.os.path.getsize', return_value=1024):
-                mock_img = MagicMock()
-                mock_exif = MagicMock()
-                mock_exif.get.return_value = None
-                mock_exif.get_ifd.return_value = None
-                mock_img.getexif.return_value = mock_exif
-                mock_pil.return_value = mock_img
-                
-                count = scan_directory('/test', db_session)
+        with patch('app.services.scanner.ensure_thumbnail', return_value='thumb_test.jpg'):
+            with patch('app.services.scanner.PILImage.open') as mock_pil:
+                with patch('app.services.scanner.os.path.getsize', return_value=1024):
+                    mock_img = MagicMock()
+                    mock_img.size = (4000, 3000)
+                    mock_exif = MagicMock()
+                    mock_exif.get.return_value = None
+                    mock_exif.get_ifd.return_value = None
+                    mock_img.getexif.return_value = mock_exif
+                    mock_pil.return_value = mock_img
+                    
+                    count = scan_directory('/test', db_session)
         
         # Should only process 5 image files
         assert count == 5
@@ -289,9 +315,10 @@ class TestScanDirectory:
 class TestEnsureThumbnail:
     """Test suite for thumbnail generation"""
 
+    @patch('app.services.scanner.ensure_thumbnail_dir')
     @patch('app.services.scanner.os.path.exists')
     @patch('app.services.scanner.PILImage.open')
-    def test_thumbnail_already_exists(self, mock_pil, mock_exists):
+    def test_thumbnail_already_exists(self, mock_pil, mock_exists, mock_ensure_dir):
         """Test that existing thumbnails are not regenerated"""
         from app.services.scanner import ensure_thumbnail
         
@@ -304,10 +331,11 @@ class TestEnsureThumbnail:
         # Should not try to open the image
         mock_pil.assert_not_called()
 
+    @patch('app.services.scanner.ensure_thumbnail_dir')
     @patch('app.services.scanner.os.path.exists')
     @patch('app.services.scanner.ImageOps.exif_transpose')
     @patch('app.services.scanner.PILImage.open')
-    def test_thumbnail_creation_success(self, mock_pil, mock_transpose, mock_exists):
+    def test_thumbnail_creation_success(self, mock_pil, mock_transpose, mock_exists, mock_ensure_dir):
         """Test successful thumbnail creation"""
         from app.services.scanner import ensure_thumbnail
         
@@ -329,10 +357,11 @@ class TestEnsureThumbnail:
         mock_img_rgb.thumbnail.assert_called_once_with((300, 300))
         mock_img_rgb.save.assert_called_once()
 
+    @patch('app.services.scanner.ensure_thumbnail_dir')
     @patch('app.services.scanner.os.path.exists')
     @patch('app.services.scanner.ImageOps.exif_transpose')
     @patch('app.services.scanner.PILImage.open')
-    def test_thumbnail_creation_handles_heic(self, mock_pil, mock_transpose, mock_exists):
+    def test_thumbnail_creation_handles_heic(self, mock_pil, mock_transpose, mock_exists, mock_ensure_dir):
         """Test thumbnail creation for HEIC images"""
         from app.services.scanner import ensure_thumbnail
         
@@ -358,9 +387,10 @@ class TestEnsureThumbnail:
         assert save_args[0][1] == 'JPEG'  # Second positional arg
         assert save_args[1]['quality'] == 70
 
+    @patch('app.services.scanner.ensure_thumbnail_dir')
     @patch('app.services.scanner.os.path.exists')
     @patch('app.services.scanner.PILImage.open')
-    def test_thumbnail_creation_error_handling(self, mock_pil, mock_exists):
+    def test_thumbnail_creation_error_handling(self, mock_pil, mock_exists, mock_ensure_dir):
         """Test error handling during thumbnail creation"""
         from app.services.scanner import ensure_thumbnail
         
@@ -371,10 +401,11 @@ class TestEnsureThumbnail:
         
         assert result is None
 
+    @patch('app.services.scanner.ensure_thumbnail_dir')
     @patch('app.services.scanner.os.path.exists')
     @patch('app.services.scanner.ImageOps.exif_transpose')
     @patch('app.services.scanner.PILImage.open')
-    def test_thumbnail_exif_transpose(self, mock_pil, mock_transpose, mock_exists):
+    def test_thumbnail_exif_transpose(self, mock_pil, mock_transpose, mock_exists, mock_ensure_dir):
         """Test that EXIF orientation is respected"""
         from app.services.scanner import ensure_thumbnail
         
