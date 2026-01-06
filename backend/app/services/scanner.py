@@ -1,16 +1,28 @@
 import os
 from datetime import datetime
-from PIL import Image as PILImage, ImageOps
+from PIL import Image as PILImage, ImageOps, ExifTags
+from PIL.ExifTags import TAGS
 from PIL import ExifTags
 from pillow_heif import register_heif_opener
 from sqlalchemy.orm import Session
 from app.models import Image
 from app.core.config import settings
+from PIL.TiffImagePlugin import IFDRational
 
 # Register HEIC support (More images to be supported in later updates of Haven)
 register_heif_opener()
 
 THUMBNAIL_DIR = settings.THUMBNAIL_DIR
+
+# Helper to convert ANY format (Tuple, Rational, Float) to a simple float
+def get_float(val):
+    if isinstance(val, IFDRational):
+        return float(val)
+    if isinstance(val, tuple) and len(val) == 2 and val[1] != 0:
+        return val[0] / val[1]
+    if isinstance(val, (int, float)):
+        return float(val)
+    return None
 
 def ensure_thumbnail_dir():
     """Create thumbnail directory if it doesn't exist"""
@@ -22,6 +34,68 @@ def ensure_thumbnail_dir():
         import tempfile
         THUMBNAIL_DIR = os.path.join(tempfile.gettempdir(), "haven_thumbnails")
         os.makedirs(THUMBNAIL_DIR, exist_ok=True)
+
+
+def extract_exif_data(img):
+    """
+    Robustly extracts camera gear and settings from HEIC/JPG.
+    Traverses the 'ExifOffset' sub-directory for technical tags.
+    """
+    data = {
+        "make": None, "model": None, 
+        "exposure": None, "f_number": None, 
+        "iso": None, "focal_length": None
+    }
+    
+    # 1. Get the main EXIF object (Works for HEIC & JPG)
+    exif = img.getexif()
+    if not exif:
+        return data
+
+    # 2. Extract Main Tags (Make, Model, Orientation)
+    for tag_id, value in exif.items():
+        tag_name = TAGS.get(tag_id, tag_id)
+        if tag_name == "Make":
+            data["make"] = str(value).strip()
+        elif tag_name == "Model":
+            data["model"] = str(value).strip()
+
+    # 3. Extract Technical Tags (The "Hidden" ExifIFD Sub-directory)
+    # Tag 0x8769 (34665) holds the technical photo data
+    try:
+        exif_ifd = exif.get_ifd(0x8769) 
+        
+        for tag_id, value in exif_ifd.items():
+            tag_name = TAGS.get(tag_id, tag_id)
+            
+            # ISO
+            if tag_name == "ISOSpeedRatings":
+                data["iso"] = value
+
+            # Aperture (FNumber)
+            elif tag_name == "FNumber":
+                # Handles values like 1.8 or (18, 10)
+                value = get_float(value)
+                data["f_number"] = round(float(value), 1)
+
+            # Focal Length
+            elif tag_name == "FocalLength":
+                value = get_float(value)
+                data["focal_length"] = round(float(value), 1)
+
+            # Shutter Speed (ExposureTime)
+            elif tag_name == "ExposureTime":
+                value = get_float(value)
+                # We want to format 0.005 as "1/200"
+                if value < 1 and value > 0:
+                    data["exposure"] = f"1/{int(round(1/value))}"
+                else:
+                    data["exposure"] = str(round(value, 1))
+                        
+    except Exception as e:
+        print(f"Error reading ExifIFD: {e}")
+
+    return data
 
 def get_decimal_from_dms(dms, ref):
     """Helper to convert degrees/minutes/seconds format to decimal format."""
@@ -116,6 +190,9 @@ def scan_directory(directory_path: str, db: Session):
 
                 ensure_thumbnail(file_path, file)
 
+                width, height = None, None
+                mp = None
+
                 try:
                     img = PILImage.open(file_path)
                     
@@ -142,7 +219,15 @@ def scan_directory(directory_path: str, db: Session):
                             lat = get_decimal_from_dms(geo['GPSLatitude'], geo['GPSLatitudeRef'])
                             lon = get_decimal_from_dms(geo['GPSLongitude'], geo['GPSLongitudeRef'])
 
-                    # 3. Save to DB
+                    # 3. Extract Dimensions
+                    width, height = img.size
+                    if width and height:
+                        mp = round((width * height) / 1_000_000, 1)
+                    
+                    # 4. Extract EXIF Metadata
+                    exif_data = extract_exif_data(img)
+
+                    # 5. Save to DB
                     db_image = Image(
                         filename=file,
                         file_path=file_path,
@@ -150,6 +235,15 @@ def scan_directory(directory_path: str, db: Session):
                         capture_date=capture_date,
                         latitude=lat,
                         longitude=lon,
+                        width=width,
+                        height=height,
+                        megapixels=mp,
+                        camera_make=exif_data.get("make"),
+                        camera_model=exif_data.get("model"),
+                        exposure_time=exif_data.get("exposure"),
+                        f_number=exif_data.get("f_number"),
+                        iso=exif_data.get("iso"),
+                        focal_length=exif_data.get("focal_length"),
                         is_processed=False
                     )
                     db.add(db_image)
