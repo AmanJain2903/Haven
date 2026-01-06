@@ -4,10 +4,10 @@ const API_URL = 'http://localhost:8000/api/v1';
 
 export const api = {
   // Fetch all photos
-  getPhotos: async () => {
+  getThumbnails: async () => {
     const response = await axios.get(`${API_URL}/images/`);
     for (let photo of response.data) {
-      photo.url = api.getImageUrl(photo.id);
+      photo.thumbnail_url = api.getThumbnailUrl(photo.id);
     }
     return response.data;
   },
@@ -19,11 +19,13 @@ export const api = {
     });
     // Add URL to each photo
     for (let photo of response.data) {
-      photo.url = api.getImageUrl(photo.id);
+      photo.thumbnail_url = api.getThumbnailUrl(photo.id);
     }
     return response.data;
   },
   
   // Helper to get full image URL
-  getImageUrl: (id) => `${API_URL}/images/file/${id}`
+  getImageUrl: (id) => `${API_URL}/images/file/${id}`,
+
+  getThumbnailUrl: (id) => `${API_URL}/images/thumbnail/${id}`
 };

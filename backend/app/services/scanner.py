@@ -1,13 +1,17 @@
 import os
 from datetime import datetime
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageOps
 from PIL import ExifTags
 from pillow_heif import register_heif_opener
 from sqlalchemy.orm import Session
 from app.models import Image
+from app.core.config import settings
 
 # Register HEIC support (More images to be supported in later updates of Haven)
 register_heif_opener()
+
+THUMBNAIL_DIR = settings.THUMBNAIL_DIR
+os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
 def get_decimal_from_dms(dms, ref):
     """Helper to convert degrees/minutes/seconds format to decimal format."""
@@ -47,6 +51,40 @@ def get_geotagging(img):
     except Exception as e:
         print(f"Error parsing GPS: {e}")
         return None
+    
+def ensure_thumbnail(file_path: str, filename: str) -> str:
+    """
+    Creates a 300px optimized JPEG thumbnail.
+    """
+    # Create output filename (e.g., thumb_IMG_1234.jpg)
+    # rsplit removes the extension safely
+    name_part = filename.rsplit('.', 1)[0]
+    thumb_filename = f"thumb_{name_part}.jpg"
+    thumb_path = os.path.join(THUMBNAIL_DIR, thumb_filename)
+    
+    # If it already exists, we are good
+    if os.path.exists(thumb_path):
+        return thumb_filename
+
+    try:
+        # Open image (handles HEIC/HEIF automatically)
+        with PILImage.open(file_path) as img:
+            # Checks EXIF tags and physically rotates the pixels to be upright
+            img = ImageOps.exif_transpose(img)
+            
+            # Convert to RGB (removes Alpha channel if present)
+            img = img.convert("RGB")
+            
+            # Shrink it! (300x300 for a thumbnail on the grid view)
+            img.thumbnail((300, 300))
+            
+            # Save as optimized JPEG
+            img.save(thumb_path, "JPEG", quality=70)
+            
+        return thumb_filename
+    except Exception as e:
+        print(f"Failed to create thumbnail for {filename}: {e}")
+        return None
 
 def scan_directory(directory_path: str, db: Session):
     print(f"Scanning directory: {directory_path}")
@@ -61,6 +99,8 @@ def scan_directory(directory_path: str, db: Session):
                 existing = db.query(Image).filter(Image.filename == file).first()
                 if existing:
                     continue
+
+                ensure_thumbnail(file_path, file)
 
                 try:
                     img = PILImage.open(file_path)

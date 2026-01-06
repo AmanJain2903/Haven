@@ -11,35 +11,6 @@ const breakpointColumnsObj = {
   640: 1,
 };
 
-
-// Dummy photo data from Unsplash with mixed orientations
-const basePhotos = [
-  { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&h=800', title: 'Mountain Vista', location: 'Iceland', orientation: 'landscape' },
-  { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=500&h=700', title: 'Sunset Coast', location: 'California', orientation: 'portrait' },
-  { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&h=700', title: 'Portrait', location: 'Studio', orientation: 'portrait' },
-  { url: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=600&h=400', title: 'Foggy Lake', location: 'Norway', orientation: 'landscape' },
-  { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&h=700', title: 'Man Portrait', location: 'Berlin', orientation: 'portrait' },
-  { url: 'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=600&h=400', title: 'Arch Rock', location: 'Dorset', orientation: 'landscape' },
-  { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500&h=700', title: 'Woman Portrait', location: 'Paris', orientation: 'portrait' },
-  { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&h=400', title: 'Coastal Cliffs', location: 'Ireland', orientation: 'landscape' },
-  { url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&h=700', title: 'Fashion', location: 'Milan', orientation: 'portrait' },
-  { url: 'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=600&h=400', title: 'Sunset Sky', location: 'Malibu', orientation: 'landscape' },
-  { url: 'https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=500&h=700', title: 'Profile', location: 'NYC', orientation: 'portrait' },
-  { url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=600&h=400', title: 'Misty Forest', location: 'Oregon', orientation: 'landscape' },
-  { url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=500&h=700', title: 'Beauty', location: 'LA', orientation: 'portrait' },
-  { url: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=600&h=400', title: 'Mountain Range', location: 'Switzerland', orientation: 'landscape' },
-];
-
-// Generate 100 photos with sequential IDs
-// const photos = Array.from({ length: 50 }, (_, i) => {
-//   const basePhoto = basePhotos[i % basePhotos.length];
-//   return {
-//     ...basePhoto,
-//     id: i + 1,
-//   };
-// });
-
-
 function PhotoCard({ photo, index}) {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -75,12 +46,14 @@ function PhotoCard({ photo, index}) {
           }
         `}
       >
+        
         {/* Image */}
         <img
-          src={photo.url}
+          src={photo.thumbnail_url}
           alt={photo.title}
           className="w-full h-full object-cover"
           loading="lazy"
+          decoding='async'
         />
 
         {/* Gradient Overlay */}

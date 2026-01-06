@@ -21,12 +21,12 @@ function App() {
 
   // Load photos on startup
   useEffect(() => {
-    loadPhotos();
+    loadThumbnails();
   }, []);
 
-  const loadPhotos = async () => {
+  const loadThumbnails = async () => {
     try {
-      const data = await api.getPhotos();
+      const data = await api.getThumbnails();
       setPhotos(data);
       console.log("Photos loaded:", data);
     } catch (error) {
@@ -36,17 +36,12 @@ function App() {
     }
   };
 
-  // Get Image URL
-  const getImageUrl = (id) => {
-    return api.getImageUrl(id);
-  }
-
   // Handle Search
   const handleSearch = async (query) => {
     if (!query || !query.trim()) {
       setSearchQuery('');
       setSearchInputValue(''); 
-      return loadPhotos();
+      return loadThumbnails();
     }
     
     setLoading(true);
@@ -67,7 +62,7 @@ function App() {
   const handleReset = () => {
     setSearchQuery('');
     setSearchInputValue('');
-    loadPhotos();
+    loadThumbnails();
   };
 
 

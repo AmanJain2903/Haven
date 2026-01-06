@@ -1,3 +1,4 @@
+import os
 from fastapi import Depends, APIRouter, Response
 from sqlalchemy.orm import Session
 from app.core.database import get_db, engine
@@ -10,7 +11,9 @@ from typing import List
 from PIL import Image
 import pillow_heif
 import io
+from app.core.config import settings
 
+backend_url = settings.HOST_URL
 
 router = APIRouter()
 
@@ -66,7 +69,8 @@ def get_images(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
         {
             "id": img.id,
             "filename": img.filename,
-            "url": f"/api/v1/images/file/{img.id}", # Magic URL for the frontend
+            "thumbnail_url": f"{backend_url}/thumbnails/thumb_{img.filename.rsplit('.', 1)[0]}.jpg", # Magic URL for thumbnail
+            "image_url": f"/api/v1/images/file/{img.id}", # Magic URL for the full image
             "date": img.capture_date
         }
         for img in images
@@ -109,4 +113,26 @@ def get_image_file(image_id: int, db: Session = Depends(get_db)):
             return FileResponse(img.file_path)
 
     # For standard images (JPG, PNG), just send the file directly
+    return FileResponse(img.file_path)
+
+@router.get("/thumbnail/{image_id}")
+def get_thumbnail_file(image_id: int, db: Session = Depends(get_db)):
+    """
+    Serve the small thumbnail version of the image.
+    """
+    img = db.query(models.Image).filter(models.Image.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404)
+        
+    # Construct expected thumbnail path
+    name_part = img.filename.rsplit('.', 1)[0]
+    thumb_filename = f"thumb_{name_part}.jpg"
+    thumb_path = os.path.join(settings.THUMBNAIL_DIR, thumb_filename)
+    
+    # If thumbnail exists, serve it
+    if os.path.exists(thumb_path):
+        return FileResponse(thumb_path)
+    
+    # Fallback: If no thumbnail exists, serve the original
+    # This prevents broken images if the scan missed one
     return FileResponse(img.file_path)
