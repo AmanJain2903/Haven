@@ -29,7 +29,15 @@ class Image(TestBase):
     file_path = Column(String, unique=True, index=True)
     file_size = Column(Integer)
     capture_date = Column(DateTime(timezone=True), server_default=func.now())
+    camera_make = Column(String, nullable=True)
     camera_model = Column(String, nullable=True)
+    exposure_time = Column(String, nullable=True)
+    f_number = Column(Float, nullable=True)
+    iso = Column(Integer, nullable=True)
+    focal_length = Column(Float, nullable=True)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    megapixels = Column(Float, nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     embedding = Column(PickleType)  # Use PickleType instead of Vector for SQLite
@@ -119,6 +127,15 @@ def sample_images(db_session):
             filename="beach.jpg",
             file_path="/test/beach.jpg",
             file_size=1024000,
+            width=4000,
+            height=3000,
+            megapixels=12.0,
+            camera_make="Canon",
+            camera_model="EOS R5",
+            exposure_time="1/500",
+            f_number=2.8,
+            iso=100,
+            focal_length=50.0,
             latitude=37.775,
             longitude=-122.419,
             is_processed=False
@@ -127,6 +144,15 @@ def sample_images(db_session):
             filename="mountain.jpg",
             file_path="/test/mountain.jpg",
             file_size=2048000,
+            width=3840,
+            height=2160,
+            megapixels=8.3,
+            camera_make="Sony",
+            camera_model="A7 III",
+            exposure_time="1/250",
+            f_number=4.0,
+            iso=200,
+            focal_length=24.0,
             latitude=40.712,
             longitude=-74.006,
             is_processed=False
@@ -135,6 +161,15 @@ def sample_images(db_session):
             filename="city.heic",
             file_path="/test/city.heic",
             file_size=3072000,
+            width=4032,
+            height=3024,
+            megapixels=12.2,
+            camera_make="Apple",
+            camera_model="iPhone 14 Pro",
+            exposure_time="1/120",
+            f_number=1.8,
+            iso=64,
+            focal_length=26.0,
             is_processed=True,
             embedding=[0.1] * 512  # Mock embedding
         ),
