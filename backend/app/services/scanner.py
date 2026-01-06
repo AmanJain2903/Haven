@@ -11,7 +11,17 @@ from app.core.config import settings
 register_heif_opener()
 
 THUMBNAIL_DIR = settings.THUMBNAIL_DIR
-os.makedirs(THUMBNAIL_DIR, exist_ok=True)
+
+def ensure_thumbnail_dir():
+    """Create thumbnail directory if it doesn't exist"""
+    global THUMBNAIL_DIR
+    try:
+        os.makedirs(THUMBNAIL_DIR, exist_ok=True)
+    except PermissionError:
+        # In testing environments, use temp directory
+        import tempfile
+        THUMBNAIL_DIR = os.path.join(tempfile.gettempdir(), "haven_thumbnails")
+        os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
 def get_decimal_from_dms(dms, ref):
     """Helper to convert degrees/minutes/seconds format to decimal format."""
@@ -56,6 +66,10 @@ def ensure_thumbnail(file_path: str, filename: str) -> str:
     """
     Creates a 300px optimized JPEG thumbnail.
     """
+
+    # Ensure thumbnail directory exists
+    ensure_thumbnail_dir()
+
     # Create output filename (e.g., thumb_IMG_1234.jpg)
     # rsplit removes the extension safely
     name_part = filename.rsplit('.', 1)[0]

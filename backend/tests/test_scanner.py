@@ -198,13 +198,17 @@ class TestScanDirectory:
         images = db_session.query(Image).all()
         assert len(images) == 1
 
+    @patch('app.services.scanner.ensure_thumbnail')
     @patch('app.services.scanner.PILImage.open')
     @patch('app.services.scanner.os.walk')
-    def test_scan_handles_errors_gracefully(self, mock_walk, mock_pil, db_session):
+    def test_scan_handles_errors_gracefully(self, mock_walk, mock_pil, mock_thumbnail, db_session):
         """Test that scan continues after encountering errors"""
         mock_walk.return_value = [
             ('/test', [], ['good.jpg', 'corrupted.jpg', 'another_good.png'])
         ]
+        
+        # Mock thumbnail creation to succeed
+        mock_thumbnail.return_value = 'thumb_test.jpg'
         
         # First call succeeds, second fails, third succeeds
         mock_pil.side_effect = [
@@ -280,3 +284,113 @@ class TestScanDirectory:
         
         # Should only process 5 image files
         assert count == 5
+
+
+class TestEnsureThumbnail:
+    """Test suite for thumbnail generation"""
+
+    @patch('app.services.scanner.os.path.exists')
+    @patch('app.services.scanner.PILImage.open')
+    def test_thumbnail_already_exists(self, mock_pil, mock_exists):
+        """Test that existing thumbnails are not regenerated"""
+        from app.services.scanner import ensure_thumbnail
+        
+        # Simulate existing thumbnail
+        mock_exists.return_value = True
+        
+        result = ensure_thumbnail('/test/photo.jpg', 'photo.jpg')
+        
+        assert result == 'thumb_photo.jpg'
+        # Should not try to open the image
+        mock_pil.assert_not_called()
+
+    @patch('app.services.scanner.os.path.exists')
+    @patch('app.services.scanner.ImageOps.exif_transpose')
+    @patch('app.services.scanner.PILImage.open')
+    def test_thumbnail_creation_success(self, mock_pil, mock_transpose, mock_exists):
+        """Test successful thumbnail creation"""
+        from app.services.scanner import ensure_thumbnail
+        
+        mock_exists.return_value = False
+        
+        # Mock PIL image operations - chain the transforms
+        mock_img = MagicMock()
+        mock_img_transposed = MagicMock()
+        mock_img_rgb = MagicMock()
+        
+        mock_pil.return_value.__enter__.return_value = mock_img
+        mock_pil.return_value.__exit__.return_value = None
+        mock_transpose.return_value = mock_img_transposed
+        mock_img_transposed.convert.return_value = mock_img_rgb
+        
+        result = ensure_thumbnail('/test/photo.jpg', 'photo.jpg')
+        
+        assert result == 'thumb_photo.jpg'
+        mock_img_rgb.thumbnail.assert_called_once_with((300, 300))
+        mock_img_rgb.save.assert_called_once()
+
+    @patch('app.services.scanner.os.path.exists')
+    @patch('app.services.scanner.ImageOps.exif_transpose')
+    @patch('app.services.scanner.PILImage.open')
+    def test_thumbnail_creation_handles_heic(self, mock_pil, mock_transpose, mock_exists):
+        """Test thumbnail creation for HEIC images"""
+        from app.services.scanner import ensure_thumbnail
+        
+        mock_exists.return_value = False
+        
+        # Mock PIL image - chain the transforms
+        mock_img = MagicMock()
+        mock_img_transposed = MagicMock()
+        mock_img_rgb = MagicMock()
+        
+        mock_pil.return_value.__enter__.return_value = mock_img
+        mock_pil.return_value.__exit__.return_value = None
+        mock_transpose.return_value = mock_img_transposed
+        mock_img_transposed.convert.return_value = mock_img_rgb
+        
+        result = ensure_thumbnail('/test/photo.heic', 'photo.heic')
+        
+        assert result == 'thumb_photo.jpg'  # Should save as .jpg
+        mock_img_rgb.save.assert_called_once()
+        # Verify it's saved as JPEG
+        save_args = mock_img_rgb.save.call_args
+        assert save_args[0][0].endswith('.jpg')
+        assert save_args[0][1] == 'JPEG'  # Second positional arg
+        assert save_args[1]['quality'] == 70
+
+    @patch('app.services.scanner.os.path.exists')
+    @patch('app.services.scanner.PILImage.open')
+    def test_thumbnail_creation_error_handling(self, mock_pil, mock_exists):
+        """Test error handling during thumbnail creation"""
+        from app.services.scanner import ensure_thumbnail
+        
+        mock_exists.return_value = False
+        mock_pil.side_effect = Exception("Corrupted image")
+        
+        result = ensure_thumbnail('/test/corrupted.jpg', 'corrupted.jpg')
+        
+        assert result is None
+
+    @patch('app.services.scanner.os.path.exists')
+    @patch('app.services.scanner.ImageOps.exif_transpose')
+    @patch('app.services.scanner.PILImage.open')
+    def test_thumbnail_exif_transpose(self, mock_pil, mock_transpose, mock_exists):
+        """Test that EXIF orientation is respected"""
+        from app.services.scanner import ensure_thumbnail
+        
+        mock_exists.return_value = False
+        
+        # Mock PIL image - chain the transforms
+        mock_img = MagicMock()
+        mock_img_transposed = MagicMock()
+        mock_img_rgb = MagicMock()
+        
+        mock_pil.return_value.__enter__.return_value = mock_img
+        mock_pil.return_value.__exit__.return_value = None
+        mock_transpose.return_value = mock_img_transposed
+        mock_img_transposed.convert.return_value = mock_img_rgb
+        
+        ensure_thumbnail('/test/rotated.jpg', 'rotated.jpg')
+        
+        # Verify exif_transpose was called
+        mock_transpose.assert_called_once_with(mock_img)
