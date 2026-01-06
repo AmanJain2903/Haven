@@ -40,6 +40,9 @@ class Image(TestBase):
     megapixels = Column(Float, nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    country = Column(String, nullable=True)
     embedding = Column(PickleType)  # Use PickleType instead of Vector for SQLite
     is_processed = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -138,6 +141,9 @@ def sample_images(db_session):
             focal_length=50.0,
             latitude=37.775,
             longitude=-122.419,
+            city="San Francisco",
+            state="California",
+            country="United States",
             is_processed=False
         ),
         Image(
@@ -155,6 +161,9 @@ def sample_images(db_session):
             focal_length=24.0,
             latitude=40.712,
             longitude=-74.006,
+            city="New York",
+            state="New York",
+            country="United States",
             is_processed=False
         ),
         Image(

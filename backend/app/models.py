@@ -17,7 +17,9 @@ class Image(Base):
     # GPS Data
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-    location_label = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    country = Column(String, nullable=True)
 
     # --- METADATA ---
     width = Column(Integer, nullable=True)

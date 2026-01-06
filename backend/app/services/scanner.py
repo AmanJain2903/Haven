@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.models import Image
 from app.core.config import settings
 from PIL.TiffImagePlugin import IFDRational
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 # Register HEIC support (More images to be supported in later updates of Haven)
 register_heif_opener()
@@ -135,6 +137,51 @@ def get_geotagging(img):
     except Exception as e:
         print(f"Error parsing GPS: {e}")
         return None
+
+def get_location_parts(latitude: float, longitude: float) -> dict:
+    """
+    Reverse geocode coordinates to get a human-readable location label.
+    Returns format: "City, State, Country" or "City, Country"
+    """
+    try:
+        # Initialize geocoder with user agent
+        geolocator = Nominatim(user_agent="haven_photo_manager")
+        
+        # Reverse geocode with timeout
+        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10, language='en')
+        
+        if not location or not location.raw.get('address'):
+            return None
+        
+        address = location.raw['address']
+        
+        # Build location string: City, State, Country (or City, Country)
+        parts = {}
+        
+        # Get city (try multiple fields)
+        city = address.get('city') or address.get('town') or address.get('village') or address.get('municipality')
+        if city:
+            parts['city'] = city
+        
+        # Get state/region (for countries that have them)
+        state = address.get('state') or address.get('region')
+        if state:
+            parts['state'] = state
+        
+        # Get country
+        country = address.get('country')
+        if country:
+            parts['country'] = country
+        
+        # Return formatted string
+        return parts
+        
+    except (GeocoderTimedOut, GeocoderServiceError) as e:
+        print(f"Geocoding service error: {e}")
+        return None
+    except Exception as e:
+        print(f"Error reverse geocoding ({latitude}, {longitude}): {e}")
+        return None
     
 def ensure_thumbnail(file_path: str, filename: str) -> str:
     """
@@ -212,12 +259,22 @@ def scan_directory(directory_path: str, db: Session):
                     # 2. Get GPS
                     lat = None
                     lon = None
+                    city = None
+                    state = None
+                    country = None
                     geo = get_geotagging(img) # Pass the image object, not just exif
                     
                     if geo:
                         if 'GPSLatitude' in geo and 'GPSLongitude' in geo:
                             lat = get_decimal_from_dms(geo['GPSLatitude'], geo['GPSLatitudeRef'])
                             lon = get_decimal_from_dms(geo['GPSLongitude'], geo['GPSLongitudeRef'])
+                            
+                            # Get human-readable location label
+                            if lat and lon:
+                                location_parts = get_location_parts(lat, lon)
+                                city = location_parts.get('city') if location_parts and location_parts.get('city') else None
+                                state = location_parts.get('state') if location_parts and location_parts.get('state') else None
+                                country = location_parts.get('country') if location_parts and location_parts.get('country') else None
 
                     # 3. Extract Dimensions
                     width, height = img.size
@@ -235,6 +292,9 @@ def scan_directory(directory_path: str, db: Session):
                         capture_date=capture_date,
                         latitude=lat,
                         longitude=lon,
+                        city=city,
+                        state=state,
+                        country=country,
                         width=width,
                         height=height,
                         megapixels=mp,
@@ -248,7 +308,8 @@ def scan_directory(directory_path: str, db: Session):
                     )
                     db.add(db_image)
                     count += 1
-                    print(f"Found: {file} | Date: {capture_date} | GPS: {lat}, {lon}")
+                    location_str = f" | Location: {city}, {state}, {country}" if city or state or country else ""
+                    print(f"Found: {file} | Date: {capture_date} | GPS: {lat}, {lon}{location_str}")
 
                 except Exception as e:
                     print(f"Error processing {file}: {e}")
