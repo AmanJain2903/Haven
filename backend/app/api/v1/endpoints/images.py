@@ -71,7 +71,9 @@ def get_images(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
             "filename": img.filename,
             "thumbnail_url": f"{backend_url}/thumbnails/thumb_{img.filename.rsplit('.', 1)[0]}.jpg", # Magic URL for thumbnail
             "image_url": f"/api/v1/images/file/{img.id}", # Magic URL for the full image
-            "date": img.capture_date
+            "date": img.capture_date,
+            "latitude": img.latitude,
+            "longitude": img.longitude
         }
         for img in images
     ]

@@ -13,11 +13,11 @@ const navigationItems = [
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
-export default function Sidebar({ onNavigate }) {
-  const [activeItem, setActiveItem] = useState('photos');
-
+export default function Sidebar({ onNavigate, activeView = 'photos', setActiveView }) {
   const handleItemClick = (itemId) => {
-    setActiveItem(itemId);
+    if (setActiveView) {
+      setActiveView(itemId);
+    }
     if (itemId === 'photos' && onNavigate) {
       onNavigate();
       window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
@@ -83,7 +83,7 @@ export default function Sidebar({ onNavigate }) {
         <nav className="flex-1 flex flex-col gap-2 px-4">
           {navigationItems.map((item, index) => {
             const Icon = item.icon;
-            const isActive = activeItem === item.id;
+            const isActive = activeView === item.id;
 
             return (
               <motion.button
