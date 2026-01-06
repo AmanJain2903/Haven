@@ -209,8 +209,9 @@ __marimo__/
 # Docker
 docker-data/
 
-# Testing
+# Data directories
 test_photos/
+haven_data/
 
 # venv
 haven_venv/
