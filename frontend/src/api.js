@@ -8,6 +8,7 @@ export const api = {
     const response = await axios.get(`${API_URL}/images/`);
     for (let photo of response.data) {
       photo.thumbnail_url = api.getThumbnailUrl(photo.id);
+      photo.image_url = api.getImageUrl(photo.id);
     }
     return response.data;
   },
@@ -17,9 +18,10 @@ export const api = {
     const response = await axios.post(`${API_URL}/intelligence/search`, null, {
       params: { query: query }
     });
-    // Add URL to each photo
+    // Add URLs to each photo
     for (let photo of response.data) {
       photo.thumbnail_url = api.getThumbnailUrl(photo.id);
+      photo.image_url = api.getImageUrl(photo.id);
     }
     return response.data;
   },
