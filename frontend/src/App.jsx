@@ -4,6 +4,7 @@ import { Sun, Moon } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SearchBar from './components/SearchBar';
 import PhotoGrid from './components/PhotoGrid';
+import MapView from './components/MapView';
 import { useTheme } from './contexts/ThemeContext';
 
 import { api } from './api';
@@ -18,6 +19,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInputValue, setSearchInputValue] = useState('');
+  const [activeView, setActiveView] = useState('photos');
 
   // Load photos on startup
   useEffect(() => {
@@ -62,6 +64,7 @@ function App() {
   const handleReset = () => {
     setSearchQuery('');
     setSearchInputValue('');
+    setActiveView('photos');
     loadThumbnails();
   };
 
@@ -276,9 +279,20 @@ function App() {
         </motion.div>
       </motion.button>
 
-      <Sidebar onNavigate={handleReset} />
+      <Sidebar onNavigate={handleReset} activeView={activeView} setActiveView={setActiveView} />
       <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
-      <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} />
+      
+      {activeView === 'photos' ? (
+        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} />
+      ) : activeView === 'map' ? (
+        <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
+          <div style={{ height: 'calc(100vh - 16rem)' }}>
+            <MapView photos={photos} />
+          </div>
+        </div>
+      ) : (
+        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} />
+      )}
 
       {/* Vignette Effect */}
       <div className="fixed inset-0 pointer-events-none bg-gradient-to-t 

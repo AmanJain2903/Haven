@@ -25,8 +25,17 @@ app = FastAPI(title="Haven API")
 
 # Mount the thumbnails directory to a URL path
 # This means http://localhost:8000/thumbnails/abc.jpg -> serves from /Users/aman/haven_data/thumbnails/abc.jpg
-os.makedirs(settings.THUMBNAIL_DIR, exist_ok=True) # Ensure it exists on startup
-app.mount("/thumbnails", CachedStaticFiles(directory=settings.THUMBNAIL_DIR), name="thumbnails")
+# Ensure thumbnail directory exists before mounting
+import tempfile
+THUMBNAIL_DIR = settings.THUMBNAIL_DIR
+try:
+    os.makedirs(THUMBNAIL_DIR, exist_ok=True)
+except (PermissionError, OSError):
+    # In testing/CI environments, use temp directory
+    THUMBNAIL_DIR = os.path.join(tempfile.gettempdir(), "haven_thumbnails")
+    os.makedirs(THUMBNAIL_DIR, exist_ok=True)
+
+app.mount("/thumbnails", CachedStaticFiles(directory=THUMBNAIL_DIR), name="thumbnails")
 
 # Allow React (Port 5173) to talk to Python
 origins = [
