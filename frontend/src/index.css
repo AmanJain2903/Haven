@@ -4,13 +4,13 @@
 
 @layer base {
   html {
-    @apply bg-black dark:bg-black bg-gray-100;
+    @apply bg-gray-100 dark:bg-slate-950;
   }
   
   body {
     @apply bg-gradient-to-br 
            from-gray-100 via-gray-50 to-slate-100 
-           dark:from-slate-950 dark:via-slate-900 dark:to-black 
+           dark:from-slate-950 dark:via-slate-800 dark:to-slate-950 
            text-slate-800 dark:text-white 
            antialiased;
   }
@@ -19,13 +19,13 @@
 @layer utilities {
   .glass-panel {
     @apply backdrop-blur-xl 
-           bg-white/70 border border-slate-200/60
-           dark:bg-white/10 dark:border dark:border-white/20;
+           bg-white/70
+           dark:bg-slate-900/80;
   }
   
   .glass-hover {
     @apply hover:bg-white/80 hover:border-slate-300/70
-           dark:hover:bg-white/15 dark:hover:border-white/30 
+           dark:hover:bg-slate-900/90 dark:hover:border-white/30 
            transition-all duration-300;
   }
 }

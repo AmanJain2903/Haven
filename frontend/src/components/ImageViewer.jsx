@@ -1,4 +1,4 @@
-import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Heart, Share2, Download, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Heart, Share2, Download, Trash2, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../contexts/ThemeContext';
@@ -122,17 +122,12 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
+      style={{willChange: 'opacity'}}
       transition={{ duration: 0.2 }}
       className="fixed inset-0 z-[100] flex items-center justify-center"
     >
-      {/* Static Background with Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br 
-                     from-gray-100 via-gray-50 to-slate-100
-                     dark:from-slate-950 dark:via-slate-900 dark:to-black"
-      />
-
-      {/* Glassmorphism Overlay */}
-      <div className="absolute inset-0 backdrop-blur-sm bg-white/10 dark:bg-black/20" />
+      {/* Translucent Background with Blur */}
+      <div className="absolute inset-0 backdrop-blur-3xl bg-white/80 dark:bg-black/80" />
       
       {/* Content Container */}
       <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-8">
@@ -216,6 +211,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     x: position.x,
                     y: position.y
                   }}
+                  willChange="transform"
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 >
                   {/* Thumbnail - shown immediately, constrained */}
@@ -223,6 +219,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     <motion.img 
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
+                      style={{willChange: 'opacity'}}
                       transition={{ duration: 0.2 }}
                       src={photo.thumbnail_url} 
                       alt={photo.filename}
@@ -239,7 +236,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     alt={photo.filename}
                     onLoad={() => setImageLoaded(true)}
                     className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
-                    style={{ display: imageLoaded ? 'block' : 'none' }}
+                    style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
                     draggable={false}
                   />
                 </motion.div>
@@ -247,106 +244,209 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
             </div>
           </div>
 
-          {/* --- Zoom Controls --- */}
-          <div className="absolute top-6 left-6 flex flex-col gap-2 z-50">
-            <button
-              onClick={handleZoomIn}
-              disabled={scale >= 5}
-              className="p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
-                       text-slate-700 dark:text-white/80 
-                       hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
-                       hover:border-purple-400/50 dark:hover:border-cyan-400/50
-                       hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed
-                       shadow-lg transition-all duration-200"
-            >
-              <ZoomIn className="w-5 h-5" />
-            </button>
-            
-            <button
-              onClick={handleZoomOut}
-              disabled={scale <= 1}
-              className="p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
-                       text-slate-700 dark:text-white/80 
-                       hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
-                       hover:border-purple-400/50 dark:hover:border-cyan-400/50
-                       hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed
-                       shadow-lg transition-all duration-200"
-            >
-              <ZoomOut className="w-5 h-5" />
-            </button>
-
-            {scale > 1 && (
-              <button
-                onClick={handleResetZoom}
-                className="p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
-                         text-slate-700 dark:text-white/80 
-                         hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
-                         hover:border-purple-400/50 dark:hover:border-cyan-400/50
-                         hover:scale-110
-                         shadow-lg transition-all duration-200"
-              >
-                <span className="text-xs font-bold">1:1</span>
-              </button>
-            )}
-          </div>
-
           {/* --- Metadata Overlay (Bottom) --- */}
-          <AnimatePresence>
+          <AnimatePresence mode="wait">
             {showMetadata && (
               <motion.div 
+                style={{ willChange: "opacity" }}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                transition={{ duration: 0.2 }}
-                className="absolute bottom-32 left-0 right-0 flex justify-center z-50"
+                transition={{ 
+                  duration: 0.15,
+                  ease: "easeOut"
+                }}
+                className="absolute bottom-32 left-0 right-0 flex justify-center z-50 px-4"
               >
                 <div 
                   className="glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
-                             rounded-2xl px-8 py-4 
-                             flex items-center gap-6 text-sm 
-                             text-slate-700 dark:text-white/90 
-                             shadow-2xl backdrop-blur-xl"
-                  style={{ whiteSpace: 'nowrap' }}
+                             rounded-2xl px-8 py-6 
+                             grid grid-cols-1 md:grid-cols-3 gap-6 
+                             text-sm text-slate-700 dark:text-white/90 
+                             shadow-2xl backdrop-blur-xl max-w-6xl will-change-transform"
                 >
                 
-                {/* Date */}
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-full bg-purple-500/10 dark:bg-cyan-500/10">
-                    <Calendar className="w-4 h-4 text-purple-600 dark:text-cyan-400" />
-                  </div>
-                  <span className="font-medium">{new Date(photo.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                </div>
-                
-                {/* Location (Only if exists) */}
-                {photo.latitude && (
-                  <div className="flex items-center gap-2 border-l-2 border-purple-400/20 dark:border-cyan-400/20 pl-6">
-                    <div className="p-2 rounded-full bg-green-500/10 dark:bg-teal-500/10">
-                      <MapPin className="w-4 h-4 text-green-600 dark:text-teal-400" />
+                {/* Column 1: File Details */}
+                <div className="flex flex-col gap-3">
+                  {/* Filename */}
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-indigo-500/10 dark:bg-blue-500/10">
+                      <Info className="w-4 h-4 text-indigo-600 dark:text-blue-400" />
                     </div>
-                    <span className="font-medium">{photo.latitude.toFixed(3)}, {photo.longitude.toFixed(3)}</span>
+                    <div className="flex flex-col">
+                      <span className="text-xs opacity-70">Filename</span>
+                      <span className="font-medium truncate max-w-[180px]">{photo.filename}</span>
+                    </div>
                   </div>
-                )}
-                
-                {/* Filename */}
-                <div className="hidden md:flex items-center gap-2 border-l-2 border-purple-400/20 dark:border-cyan-400/20 pl-6">
-                  <div className="p-2 rounded-full bg-indigo-500/10 dark:bg-blue-500/10">
-                    <Info className="w-4 h-4 text-indigo-600 dark:text-blue-400" />
-                  </div>
-                  <span className="truncate max-w-[200px] font-medium">{photo.filename}</span>
+
+                  {/* File Size */}
+                  {photo.metadata?.size_bytes && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-purple-500/10 dark:bg-violet-500/10">
+                        <HardDrive className="w-4 h-4 text-purple-600 dark:text-violet-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs opacity-70">File Size</span>
+                        <span className="font-medium">
+                          {photo.metadata.size_bytes < 1024 * 1024 
+                            ? `${(photo.metadata.size_bytes / 1024).toFixed(1)} KB`
+                            : `${(photo.metadata.size_bytes / (1024 * 1024)).toFixed(2)} MB`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dimensions */}
+                  {photo.width && photo.height && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-blue-500/10 dark:bg-sky-500/10">
+                        <Maximize className="w-4 h-4 text-blue-600 dark:text-sky-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs opacity-70">Dimensions</span>
+                        <span className="font-medium">{photo.width}px × {photo.height}px</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {/* Column 2: Camera Details */}
+                <div className="flex flex-col gap-3">
+                  {/* Camera Make & Model */}
+                  {(photo.metadata?.camera_make || photo.metadata?.camera_model) && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-amber-500/10 dark:bg-yellow-500/10">
+                        <Camera className="w-4 h-4 text-amber-600 dark:text-yellow-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs opacity-70">Camera</span>
+                        <span className="font-medium">
+                          {[photo.metadata.camera_make, photo.metadata.camera_model].filter(Boolean).join(' ')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Exposure Settings */}
+                  {(photo.metadata?.exposure_time || photo.metadata?.iso || photo.metadata?.f_number || photo.metadata?.focal_length) && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-emerald-500/10 dark:bg-green-500/10">
+                        <Aperture className="w-4 h-4 text-emerald-600 dark:text-green-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs opacity-70">Settings</span>
+                        <span className="font-medium">
+                          {[
+                            photo.metadata.exposure_time && `${photo.metadata.exposure_time}`,
+                            photo.metadata.f_number && `f/${photo.metadata.f_number}`,
+                            photo.metadata.iso && `ISO ${photo.metadata.iso}`,
+                            photo.metadata.focal_length && `${photo.metadata.focal_length}mm`
+                          ].filter(Boolean).join(' • ')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Megapixels */}
+                  {photo.megapixels && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-pink-500/10 dark:bg-rose-500/10">
+                        <Layers className="w-4 h-4 text-pink-600 dark:text-rose-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs opacity-70">Megapixels</span>
+                        <span className="font-medium">{photo.megapixels.toFixed(1)} MP</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Column 3: Location & Date */}
+                <div className="flex flex-col gap-3">
+                  {/* Location */}
+                  {(photo.city || photo.state || photo.country) && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-green-500/10 dark:bg-teal-500/10">
+                        <MapPin className="w-4 h-4 text-green-600 dark:text-teal-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs opacity-70">Location</span>
+                        <span className="font-medium">
+                          {[photo.city, photo.state, photo.country].filter(Boolean).join(', ')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Capture Date */}
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-purple-500/10 dark:bg-cyan-500/10">
+                      <Calendar className="w-4 h-4 text-purple-600 dark:text-cyan-400" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs opacity-70">Capture Date</span>
+                      <span className="font-medium">{new Date(photo.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                    </div>
+                  </div>
+
+                  {/* Capture Time */}
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-indigo-500/10 dark:bg-purple-500/10">
+                      <Clock className="w-4 h-4 text-indigo-600 dark:text-purple-400" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs opacity-70">Capture Time (UTC)</span>
+                      <span className="font-medium">
+                        {new Date(photo.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </span>
+              </div>
+            </div>
+          </div>
               </div>
             </motion.div>
             )}
           </AnimatePresence>
 
           {/* --- Action Buttons (Bottom) --- */}
-          <div className="absolute bottom-8 left-0 right-0 flex justify-center z-50">
-            <div className="glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
-                           rounded-full px-6 py-3 
-                           flex items-center gap-3 
-                           shadow-2xl backdrop-blur-xl">
-              
-              {/* Info Button */}
+          <div className="absolute bottom-8 left-0 right-0 flex justify-center items-end z-50">
+            {/* Zoom Out Button - Left Outside */}
+            <button
+              onClick={handleZoomOut}
+              disabled={scale <= 1}
+              className={`p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
+                       shadow-lg transition-all duration-200 mr-4
+                       ${scale <= 1 
+                         ? 'opacity-50 cursor-not-allowed text-slate-400 dark:text-white/30' 
+                         : 'text-slate-700 dark:text-white/80 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 hover:border-purple-400/50 dark:hover:border-cyan-400/50 hover:scale-110'
+                       }`}
+            >
+              <ZoomOut className="w-5 h-5" />
+            </button>
+
+            {/* Center Column */}
+            <div className="flex flex-col items-center gap-3">
+              {/* Reset Zoom Button - Above Toolbar */}
+              {scale > 1 && (
+                <button
+                  onClick={handleResetZoom}
+                  className="p-2 px-4 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
+                           text-slate-700 dark:text-white/80 
+                           hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
+                           hover:border-purple-400/50 dark:hover:border-cyan-400/50
+                           hover:scale-110
+                           shadow-lg transition-all duration-200"
+                >
+                  <span className="text-xs font-bold">Reset Zoom</span>
+                </button>
+              )}
+
+              {/* Main Toolbar */}
+              <div className="glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
+                             rounded-full px-6 py-3 
+                             flex items-center gap-3 
+                             shadow-2xl backdrop-blur-xl">
+                
+                {/* Info Button */}
               <button
                 onClick={() => setShowMetadata(!showMetadata)}
                 className={`p-2.5 rounded-full transition-all duration-200
@@ -401,7 +501,22 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
               >
                 <Trash2 className="w-5 h-5 text-slate-700 dark:text-white/70 group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors" />
               </button>
+              </div>
             </div>
+
+            {/* Zoom In Button - Right Outside */}
+            <button
+              onClick={handleZoomIn}
+              disabled={scale >= 5}
+              className={`p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
+                       shadow-lg transition-all duration-200 ml-4
+                       ${scale >= 5 
+                         ? 'opacity-50 cursor-not-allowed text-slate-400 dark:text-white/30' 
+                         : 'text-slate-700 dark:text-white/80 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 hover:border-purple-400/50 dark:hover:border-cyan-400/50 hover:scale-110'
+                       }`}
+            >
+              <ZoomIn className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </motion.div>

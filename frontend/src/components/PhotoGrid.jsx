@@ -71,6 +71,7 @@ function PhotoCard({ photo, index, onClick }) {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: isHovered ? 1 : 0, y: isHovered ? 0 : 20 }}
+          style={{willChange: 'opacity, transform'}}
           transition={{ duration: 0.3 }}
           className="absolute inset-x-0 bottom-0 p-4"
         >
@@ -78,10 +79,12 @@ function PhotoCard({ photo, index, onClick }) {
             <h3 className="text-white font-semibold text-lg tracking-wide drop-shadow-lg">
               {photo.title}
             </h3>
-            <p className="text-purple-300 dark:text-cyan-300 text-sm flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-purple-400 dark:bg-cyan-400" />
-              {photo.location}
-            </p>
+            {/* Dynamically render location only if available */}
+            {(photo.city || photo.state || photo.country) && (
+              <p className="text-purple-300 dark:text-cyan-300 text-base font-bold flex items-center gap-1">
+                {[photo.city, photo.state, photo.country].filter(Boolean).join(', ')}
+              </p>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -239,6 +242,7 @@ export default function PhotoGrid({ photos = [], loading = false, searchQuery = 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        style={{willChange: 'opacity, transform'}}
         transition={{ duration: 0.6, delay: 0.3 }}
         className="mb-8 flex items-center justify-between"
       >
