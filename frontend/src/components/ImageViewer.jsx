@@ -1,4 +1,4 @@
-import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Heart, Share2, Download, Trash2, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Heart, Share2, Download, Trash2, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock, MoreVertical, Play, Edit, RotateCcw, RotateCw, FolderPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../contexts/ThemeContext';
@@ -8,6 +8,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
   const [direction, setDirection] = useState(0);
   const [prevIndex, setPrevIndex] = useState(currentIndex);
   const [showMetadata, setShowMetadata] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -490,8 +491,6 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                 <Download className="w-5 h-5 text-slate-700 dark:text-white/70 group-hover:text-teal-500 dark:group-hover:text-teal-400 transition-colors" />
               </button>
 
-              <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
-
               {/* Delete Button */}
               <button
                 onClick={() => {/* TODO: Add delete functionality */}}
@@ -501,6 +500,119 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
               >
                 <Trash2 className="w-5 h-5 text-slate-700 dark:text-white/70 group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors" />
               </button>
+
+              <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
+
+              {/* More Options Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowMoreOptions(!showMoreOptions)}
+                  className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20
+                           hover:bg-slate-500/30 hover:border-slate-400/50 
+                           transition-all duration-200 group"
+                >
+                  <MoreVertical className="w-5 h-5 text-slate-700 dark:text-white/70 group-hover:text-slate-600 dark:group-hover:text-white transition-colors" />
+                </button>
+
+                {/* More Options Dropdown */}
+                <AnimatePresence>
+                  {showMoreOptions && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      style ={{ willChange: "opacity, transform" }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute bottom-full right-0 mb-2 glass-panel border-2 border-purple-400/40 dark:border-cyan-400/40 
+                                 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden z-50 min-w-[200px]"
+                    >
+                      <div className="py-2">
+                        {/* Slideshow */}
+                        <button
+                          onClick={() => {
+                            setShowMoreOptions(false);
+                            // TODO: Add slideshow functionality
+                          }}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
+                                   text-slate-700 dark:text-white/80 transition-all duration-200"
+                        >
+                          <Play className="w-4 h-4" />
+                          <span className="text-sm font-medium">Slideshow</span>
+                        </button>
+
+                        {/* Edit */}
+                        <button
+                          onClick={() => {
+                            setShowMoreOptions(false);
+                            // TODO: Add edit functionality
+                          }}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
+                                   text-slate-700 dark:text-white/80 transition-all duration-200"
+                        >
+                          <Edit className="w-4 h-4" />
+                          <span className="text-sm font-medium">Edit</span>
+                        </button>
+
+                        <div className="h-px bg-purple-400/20 dark:bg-cyan-400/20 my-1 mx-2" />
+
+                        {/* Rotate Left */}
+                        <button
+                          onClick={() => {
+                            setShowMoreOptions(false);
+                            // TODO: Add rotate left functionality
+                          }}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
+                                   text-slate-700 dark:text-white/80 transition-all duration-200"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          <span className="text-sm font-medium">Rotate Left</span>
+                        </button>
+
+                        {/* Rotate Right */}
+                        <button
+                          onClick={() => {
+                            setShowMoreOptions(false);
+                            // TODO: Add rotate right functionality
+                          }}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
+                                   text-slate-700 dark:text-white/80 transition-all duration-200"
+                        >
+                          <RotateCw className="w-4 h-4" />
+                          <span className="text-sm font-medium">Rotate Right</span>
+                        </button>
+
+                        <div className="h-px bg-purple-400/20 dark:bg-cyan-400/20 my-1 mx-2" />
+
+                        {/* Add to Album */}
+                        <button
+                          onClick={() => {
+                            setShowMoreOptions(false);
+                            // TODO: Add to album functionality
+                          }}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
+                                   text-slate-700 dark:text-white/80 transition-all duration-200"
+                        >
+                          <FolderPlus className="w-4 h-4" />
+                          <span className="text-sm font-medium">Add to Album</span>
+                        </button>
+
+                        {/* Add/Edit Location */}
+                        <button
+                          onClick={() => {
+                            setShowMoreOptions(false);
+                            // TODO: Add/edit location functionality
+                          }}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
+                                   text-slate-700 dark:text-white/80 transition-all duration-200"
+                        >
+                          <MapPin className="w-4 h-4" />
+                          <span className="text-sm font-medium">Add/Edit Location</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
               </div>
             </div>
 

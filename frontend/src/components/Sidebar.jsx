@@ -1,15 +1,19 @@
 import { motion } from 'framer-motion';
-import { Image, Album, Heart, Users, Box, Smartphone, Map, Settings } from 'lucide-react';
+import { Image, Album, Heart, Users, Box, Map, Settings, Video, Library, Camera, Files, Sparkles} from 'lucide-react';
 import { useState } from 'react';
 
 const navigationItems = [
+  {id: 'all', icon: Files, label: 'All Media' },
   { id: 'photos', icon: Image, label: 'Photos' },
+  { id: 'videos', icon: Video, label: 'Videos' },
+  { id: 'raw', icon: Camera, label: 'RAW' },
   { id: 'albums', icon: Album, label: 'Albums' },
+  { id: 'smart-albums', icon: Sparkles, label: 'Smart Albums' },
   { id: 'favourites', icon: Heart, label: 'Favourites' },
   { id: 'faces', icon: Users, label: 'Faces' },
   { id: 'things', icon: Box, label: 'Things' },
-  { id: 'devices', icon: Smartphone, label: 'Devices' },
   { id: 'map', icon: Map, label: 'Map' },
+  { id: 'dashboard', icon: Library, label: 'Dashboard' },
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
@@ -83,7 +87,7 @@ export default function Sidebar({ onNavigate, activeView = 'photos', setActiveVi
         </motion.div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 flex flex-col gap-2 px-4">
+        <nav className="flex-1 flex flex-col gap-1 px-4">
           {navigationItems.map((item, index) => {
             const Icon = item.icon;
             const isActive = activeView === item.id;
@@ -152,34 +156,6 @@ export default function Sidebar({ onNavigate, activeView = 'photos', setActiveVi
             );
           })}
         </nav>
-
-        {/* User Avatar (Bottom) */}
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          style={{willChange: 'transform'}}
-          transition={{ delay: 0.4, type: 'spring', stiffness: 200 }}
-          className="mt-auto px-4"
-        >
-          <button className="w-full flex items-center gap-3 p-2 rounded-2xl 
-                           hover:bg-slate-200/50 dark:hover:bg-white/10 
-                           transition-all duration-300">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 
-                         hover:shadow-glow-cyan transition-all duration-300 hover:scale-110
-                         ring-2 ring-slate-300/40 dark:ring-white/20 
-                         hover:ring-purple-400/50 dark:hover:ring-cyan-400/50 
-                         flex-shrink-0">
-              <img
-                src="https://i.pravatar.cc/150?img=68"
-                alt="User"
-                className="w-full h-full rounded-full object-cover"
-              />
-            </div>
-            <span className="text-sm font-medium text-slate-700 dark:text-white/70 whitespace-nowrap">
-              Profile
-            </span>
-          </button>
-        </motion.div>
       </div>
     </motion.aside>
   );
