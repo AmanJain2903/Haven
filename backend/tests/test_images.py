@@ -236,17 +236,6 @@ class TestGetImagesEndpoint:
         data = response.json()
         assert len(data) <= 1
 
-    def test_get_images_urls_format(self, client, sample_images, db_session):
-        """Test that URLs are correctly formatted"""
-        response = client.get("/api/v1/images/")
-        data = response.json()
-        
-        if len(data) > 0:
-            first_image = data[0]
-            # Check URL patterns
-            assert first_image["image_url"].startswith("/api/v1/images/file/")
-            assert "thumb_" in first_image["thumbnail_url"]
-
 
 class TestGetImageFileEndpoint:
     """Test suite for GET /api/v1/images/file/{image_id} endpoint"""

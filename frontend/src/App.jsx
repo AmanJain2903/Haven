@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SearchBar from './components/SearchBar';
@@ -15,56 +15,137 @@ function App() {
   const [scrollTimeout, setScrollTimeout] = useState(null);
   const { isDark, toggleTheme } = useTheme();
 
+  const [totalCount, setTotalCount] = useState(0); 
+
   const [photos, setPhotos] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInputValue, setSearchInputValue] = useState('');
   const [activeView, setActiveView] = useState('photos');
 
-  // Load photos on startup
-  useEffect(() => {
-    loadThumbnails();
-  }, []);
+  // 1. Add state for pagination
+  const [skip, setSkip] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const LIMIT = 500;
 
-  const loadThumbnails = async () => {
-    try {
-      const data = await api.getThumbnails();
-      setPhotos(data);
-      console.log("Photos loaded:", data);
-    } catch (error) {
-      console.error("Failed to load photos:", error);
-    } finally {
-      setLoading(false);
+  // --- UNIFIED LOAD FUNCTION ---
+  // We use useCallback to prevent infinite loops when passed to useEffect
+  const loadMorePhotos = useCallback(async () => {
+      if (loading || !hasMore) return;
+
+      setLoading(true);
+      try {
+          let response;
+          console.log(`Loading... Skip: ${skip}, Limit: ${LIMIT}`);
+
+          // BRANCH LOGIC: Check if we are searching or viewing timeline
+          if (searchQuery) {
+             // Load Search Results
+             response = await api.searchPhotos(searchQuery, skip, LIMIT);
+          } else {
+             // Load Normal Timeline
+             response = await api.getThumbnails(skip, LIMIT);
+          }
+          
+          const { photos: newPhotos, total } = response;
+
+          // UPDATE TOTAL COUNT (Only needed on first page, but safe to do always)
+          if (skip === 0) {
+              setTotalCount(total); 
+          }
+
+          if (newPhotos.length < LIMIT) {
+              setHasMore(false); // No more photos in DB
+          }
+          
+          // Append new photos to existing ones
+          setPhotos(prev => {
+              // Safety: Filter duplicates based on ID just in case
+              const existingIds = new Set(prev.map(p => p.id));
+              const uniqueNew = newPhotos.filter(p => !existingIds.has(p.id));
+              return [...prev, ...uniqueNew];
+          });
+
+          // Increase skip for next time
+          setSkip(prev => prev + LIMIT);
+
+      } catch (error) {
+          console.error("Failed to load photos:", error);
+      } finally {
+          setLoading(false);
+      }
+  }, [skip, loading, hasMore, searchQuery, totalCount]); // Dependencies
+
+  // --- INITIAL LOAD ---
+  useEffect(() => {
+    // Only load if we have 0 photos and we aren't searching
+    if (photos.length === 0 && !searchQuery) {
+        loadMorePhotos();
     }
-  };
+  }, []); // Run once on mount
 
   // Handle Search
   const handleSearch = async (query) => {
     if (!query || !query.trim()) {
-      setSearchQuery('');
-      setSearchInputValue(''); 
-      return loadThumbnails();
+      return handleReset();
     }
-    
-    setLoading(true);
+
+    // 1. Reset State for a new Search
     setSearchQuery(query);
     setSearchInputValue(query);
+    setPhotos([]);     // Clear old photos immediately
+    setSkip(0);        // Reset counter
+    setHasMore(true);  // Re-enable infinite scroll
+    setLoading(true);
+    
     try {
-      const results = await api.searchPhotos(query);
+      // 2. Fetch First Batch (Page 0)
+      const { photos: results, total } = await api.searchPhotos(query, 0, LIMIT);
+      
       setPhotos(results);
+      setTotalCount(total);
+      
+      // 3. Prepare for next batch
+      if (results.length < LIMIT) {
+          setHasMore(false);
+      }
+      setSkip(LIMIT); // Next load starts at 500
+
     } catch (e) {
       console.error('Search error:', e);
       setPhotos([]);
     } finally {
       setLoading(false);
+      window.scrollTo(0, 0);
     }
   };
 
   // Reset to all photos
-  const handleReset = () => {
+  const handleReset = async () => {
     setSearchQuery('');
     setSearchInputValue('');
-    loadThumbnails();
+
+    // Reset Pagination State
+    setHasMore(true); 
+    setSkip(0);    
+    setLoading(false);
+
+    try {
+      // Manually fetch the first batch (Page 1) to restart the timeline
+      // We cannot use loadMorePhotos() here because 'skip' state might not have updated yet
+      const { photos: results, total } = await api.getThumbnails(0, LIMIT);
+      
+      setPhotos(results);
+      setTotalCount(total);
+      
+      // Set skip to 500 so the next automatic scroll loads the correct batch
+      setSkip(LIMIT); 
+    } catch (error) {
+      console.error("Failed to reset timeline:", error);
+    } finally {
+      setLoading(false);
+      window.scrollTo(0, 0);
+    }
   };
 
 
@@ -285,19 +366,19 @@ function App() {
         </motion.div>
       </motion.button>
 
-      <Sidebar onNavigate={handleReset} activeView={activeView} setActiveView={setActiveView} />
+      <Sidebar activeView={activeView} setActiveView={setActiveView} />
       <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
       
       {activeView === 'photos' ? (
-        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} />
+        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} />
       ) : activeView === 'map' ? (
         <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
           <div style={{ height: 'calc(100vh - 16rem)' }}>
-            <MapView photos={photos} />
+            <MapView searchQuery={searchQuery}/>
           </div>
         </div>
       ) : (
-        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} />
+        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} />
       )}
 
       {/* Vignette Effect */}

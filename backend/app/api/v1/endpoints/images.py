@@ -1,6 +1,6 @@
 import os
 from fastapi import Depends, APIRouter, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 from sqlalchemy import desc, case
 from app.core.database import get_db, engine
 from app import models
@@ -76,8 +76,8 @@ def get_images(response: Response,skip: int = 0, limit: int = 100, db: Session =
         {
             "id": img.id,
             "filename": img.filename,
-            "thumbnail_url": f"{backend_url}/thumbnails/thumb_{hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}.jpg", # Magic URL for thumbnail
-            "image_url": f"/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "date": img.capture_date,
             "latitude": img.latitude,
             "longitude": img.longitude,
@@ -171,6 +171,10 @@ def get_timeline(
 ):
     # FORCE NO CACHE 
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+
+    # Get Total Count (Fast count of all images)
+    total_count = db.query(models.Image).count()
+    response.headers["X-Total-Count"] = str(total_count)
     
     # 1. Sort Logic: Dates first (Newest to Oldest), then Nulls last
     # This SQL trickery ensures clean ordering
@@ -188,8 +192,8 @@ def get_timeline(
         {
             "id": img.id,
             "filename": img.filename,
-            "thumbnail_url": f"{backend_url}/thumbnails/thumb_{hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}.jpg", # Magic URL for thumbnail
-            "image_url": f"/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "date": img.capture_date,
             "latitude": img.latitude,
             "longitude": img.longitude,
@@ -212,3 +216,37 @@ def get_timeline(
         }
         for img in images
     ]
+
+@router.get("/map-data", response_model=List[dict])
+def get_map_data(db: Session = Depends(get_db)):
+    """
+    Fetches ALL geotagged images but ONLY the fields needed for pins.
+    This is lightweight so we can load thousands of pins without crashing.
+    """
+    # 1. Filter only images with GPS
+    query = db.query(models.Image).filter(
+        models.Image.latitude != None,
+        models.Image.longitude != None
+    )
+    
+    # 2. Select specific columns to reduce payload size (Optimization)
+    # We don't need camera models, megapixels, etc. for the map pins
+    results = query.with_entities(
+        models.Image.id,
+        models.Image.latitude,
+        models.Image.longitude,
+        models.Image.file_path
+    ).all()
+
+    # 3. Format response
+    response = []
+    for img in results:
+        response.append({
+            "id": img.id,
+            "latitude": img.latitude,
+            "longitude": img.longitude,
+            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+        })
+    
+    return response
