@@ -43,7 +43,24 @@ def search_photos(query: str, threshold: float = 0.8, db: Session = Depends(get_
             "filename": img.filename,
             "score": f"{score}%",
             "path": img.file_path,
-            "date": img.capture_date
+            "date": img.capture_date,
+            "latitude": img.latitude,
+            "longitude": img.longitude,
+            "city": img.city,
+            "state": img.state,
+            "country": img.country,
+            "width": img.width,
+            "height": img.height,
+            "megapixels": img.megapixels,
+            "metadata": {
+                "camera_make": img.camera_make,
+                "camera_model": img.camera_model,
+                "exposure_time": img.exposure_time,
+                "f_number": img.f_number,
+                "iso": img.iso,
+                "focal_length": img.focal_length,
+                "size_bytes": img.file_size
+            }
         })
         
     return response

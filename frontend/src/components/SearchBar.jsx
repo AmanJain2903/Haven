@@ -63,12 +63,13 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      style={{ willChange: "opacity" }}
+      initial={{ opacity: 0, y: -20 }}
       animate={{ 
         opacity: isVisible ? 1 : 0,
+        y: isVisible ? 0 : -20
       }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      style={{ pointerEvents: isVisible ? 'auto' : 'none', willChange: 'transform, opacity' }}
       className="fixed top-8 left-[calc(240px+3rem)] right-6 z-40 flex justify-center"
     >
       <div className="w-full max-w-3xl relative">
@@ -83,6 +84,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
             scale: [1, 1.05, 1],
             opacity: [0.3, 0.45, 0.3],
           }}
+          style={{willChange: 'opacity, transform'}}
           transition={{
             duration: 10,
             repeat: Infinity,
@@ -107,6 +109,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
             opacity: isFocused ? [0.8, 1.0, 0.8] : [0.5, 0.8, 0.5],
             scale: isFocused ? [1, 1.02, 1] : 1,
           }}
+          style={{willChange: 'opacity, transform'}}
           transition={{
             duration: 4,
             repeat: Infinity,
@@ -125,6 +128,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
               rotate: isFocused ? 360 : 0,
               scale: isFocused ? 1.1 : 1,
             }}
+            style={{willChange: 'transform'}}
             transition={{ duration: 0.4 }}
           >
             <Search
@@ -154,6 +158,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
               rotate: [0, 10, -10, 0],
               scale: isFocused ? [1, 1.2, 1] : 1,
             }}
+            style={{willChange: 'transform'}}
             transition={{
               duration: 2,
               repeat: Infinity,
@@ -170,6 +175,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: [1, 1.5, 0] }}
+                style={{willChange: 'transform'}}
                 transition={{
                   duration: 1.5,
                   repeat: Infinity,
@@ -186,6 +192,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
               type="submit"
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
+              style={{willChange: 'transform'}}
               exit={{ scale: 0, opacity: 0 }}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -242,6 +249,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
+          style={{willChange: 'opacity, transform'}}
           transition={{ delay: 0.1 }}
           className="mt-3 glass-panel rounded-2xl p-3 shadow-xl"
         >

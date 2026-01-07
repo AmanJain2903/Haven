@@ -32,6 +32,7 @@ export default function Sidebar({ onNavigate, activeView = 'photos', setActiveVi
         opacity: 1,
         y: [0, -8, 0],
       }}
+      style={{willChange: 'transform, opacity'}}
       transition={{ 
         x: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
         opacity: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
@@ -48,6 +49,7 @@ export default function Sidebar({ onNavigate, activeView = 'photos', setActiveVi
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
+          style={{willChange: 'transform'}}
           transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
           className="mb-12 relative px-6 flex justify-center"
         >
@@ -60,6 +62,7 @@ export default function Sidebar({ onNavigate, activeView = 'photos', setActiveVi
                   '30% 60% 70% 40% / 50% 60% 30% 60%',
                   '60% 40% 30% 70% / 60% 30% 70% 40%',
                 ],
+                style: {willChange: 'opacity, transform'},
                 scale: [1, 1.08, 1],
                 opacity: [0.35, 0.5, 0.35],
               }}
@@ -90,6 +93,7 @@ export default function Sidebar({ onNavigate, activeView = 'photos', setActiveVi
                 key={item.id}
                 initial={{ x: -50, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
+                style={{willChange: 'transform, opacity'}}
                 transition={{ delay: 0.1 * index, duration: 0.4 }}
                 onClick={() => handleItemClick(item.id)}
                 className="relative group"
@@ -153,6 +157,7 @@ export default function Sidebar({ onNavigate, activeView = 'photos', setActiveVi
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
+          style={{willChange: 'transform'}}
           transition={{ delay: 0.4, type: 'spring', stiffness: 200 }}
           className="mt-auto px-4"
         >

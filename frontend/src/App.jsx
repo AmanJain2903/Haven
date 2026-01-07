@@ -137,7 +137,7 @@ function App() {
             mass: 0.5,
           }}
           className="absolute w-[500px] h-[500px] bg-gradient-to-br 
-                     from-purple-400/20 via-blue-400/15 to-transparent
+                     from-purple-400/30 via-blue-400/25 to-transparent
                      dark:from-cyan-400/30 dark:via-teal-400/20 dark:to-transparent 
                      rounded-full blur-3xl"
           style={{ willChange: 'transform' }}
@@ -151,6 +151,7 @@ function App() {
             scale: [1, 1.3, 1],
             opacity: [0.15, 0.25, 0.15],
           }}
+          style={{willChange: 'transform, opacity'}}
           transition={{
             duration: 20,
             repeat: Infinity,
@@ -168,6 +169,7 @@ function App() {
             scale: [1, 1.4, 1],
             opacity: [0.15, 0.3, 0.15],
           }}
+          style={{willChange: 'transform, opacity'}}
           transition={{
             duration: 25,
             repeat: Infinity,
@@ -185,6 +187,7 @@ function App() {
             scale: [1, 1.2, 1],
             opacity: [0.1, 0.2, 0.1],
           }}
+          style={{willChange: 'transform, opacity'}}
           transition={{
             duration: 18,
             repeat: Infinity,
@@ -215,6 +218,7 @@ function App() {
             style={{
               left: `${(i * 5) % 100}%`,
               top: `${(i * 7) % 100}%`,
+              willChange: 'transform, opacity'
             }}
           />
         ))}
@@ -237,18 +241,19 @@ function App() {
       {/* Main Layout */}
       {/* Theme Toggle - Top Right */}
       <motion.button
-        initial={{ opacity: 0, scale: 1 }}
+        initial={{ opacity: 0, y: 0 }}
         animate={{ 
-          opacity: isToggleVisible ? 0.999999 : 0
+          opacity: isToggleVisible ? 1 : 0,
         }}
         transition={{ 
-          duration: 0.5,
-          ease: [0.22, 1, 0.36, 1]
+          duration: 0.3,
+          ease: "easeOut"
         }}
         onClick={toggleTheme}
+        style={{ pointerEvents: isToggleVisible ? 'auto' : 'none', willChange: 'transform, opacity' }}
         className="fixed top-8 right-8 z-50 p-4 glass-panel rounded-2xl
-                 hover:bg-white/85 dark:hover:bg-white/15
-                 transition-all duration-500 group"
+                 hover:bg-white/85 dark:hover:bg-slate-900/90
+                 transition-all duration-300 group"
       >
         <motion.div
           animate={{
@@ -260,6 +265,7 @@ function App() {
             scale: [1, 1.05, 1],
             opacity: [0.3, 0.45, 0.3],
           }}
+          style={{willChange: 'transform, opacity'}}
           transition={{
             duration: 10,
             repeat: Infinity,
@@ -270,6 +276,7 @@ function App() {
         <motion.div
           animate={{ rotate: isDark ? 0 : 180 }}
           transition={{ duration: 0.5, type: 'spring' }}
+          style={{willChange: 'transform'}}
         >
           {isDark ? (
             <Moon className="w-6 h-6 text-cyan-300" />
