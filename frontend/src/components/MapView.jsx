@@ -6,8 +6,9 @@ import { divIcon } from 'leaflet';
 import { motion } from 'framer-motion';
 import { MapPin } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ImageViewer from './ImageViewer';
+import  { api }  from '../api';
 
 // Fix for default Leaflet markers not showing in React
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -21,63 +22,140 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const MapView = ({ photos }) => {
+const MapView = ({searchQuery}) => {
   const { isDark } = useTheme();
+  const [mapPhotos, setMapPhotos] = useState([]); // Store all map points
+  const [loading, setLoading] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(null);
-  const [clusterPhotos, setClusterPhotos] = useState([]);
-  
-  // Filter out photos that don't have GPS data
-  const geotaggedPhotos = photos.filter(p => p.latitude && p.longitude);
+  const [viewerPhotos, setViewerPhotos] = useState([]);
 
-  // Calculate center as average of all geotagged photos
-  const center = geotaggedPhotos.length > 0 
-    ? [
-        geotaggedPhotos.reduce((sum, p) => sum + p.latitude, 0) / geotaggedPhotos.length,
-        geotaggedPhotos.reduce((sum, p) => sum + p.longitude, 0) / geotaggedPhotos.length
-      ]
-    : [20.5937, 78.9629]; // Default to India
+  // 1. Fetch Data
+  useEffect(() => {
+    const fetchMapData = async () => {
+      setLoading(true);
+      try {
+        let data = [];
+        if (searchQuery && searchQuery.trim().length > 0) {
+          data = await api.searchMapPoints(searchQuery);
+        } else {
+          data = await api.getAllMapPoints();
+        }
+        setMapPhotos(data || []);
+      } catch (error) {
+        console.error("Failed to load map data", error);
+        setMapPhotos([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMapData();
+  }, [searchQuery]);
 
-  // Calculate appropriate zoom level based on photo spread
-  const getZoomLevel = () => {
-    if (geotaggedPhotos.length === 0) return 4;
-    if (geotaggedPhotos.length === 1) return 12;
+  // 2. Compute Valid Photos (Memoized)
+  const validPhotos = useMemo(() => {
+    if (!mapPhotos) return [];
+    return mapPhotos.filter(p => 
+      p.latitude != null && 
+      p.longitude != null && 
+      !isNaN(Number(p.latitude)) && 
+      !isNaN(Number(p.longitude))
+    );
+  }, [mapPhotos]);
+
+  // 3. Compute Center (Memoized)
+  const center = useMemo(() => {
+    if (validPhotos.length === 0) return [20.5937, 78.9629]; 
+    try {
+        const latSum = validPhotos.reduce((sum, p) => sum + Number(p.latitude), 0);
+        const lngSum = validPhotos.reduce((sum, p) => sum + Number(p.longitude), 0);
+        return [latSum / validPhotos.length, lngSum / validPhotos.length];
+    } catch (e) {
+        return [20.5937, 78.9629]; 
+    }
+  }, [validPhotos]);
+
+  // 4. Compute Zoom (Memoized)
+  const zoomLevel = useMemo(() => {
+    if (validPhotos.length === 0) return 4;
+    if (validPhotos.length === 1) return 12;
     
-    const lats = geotaggedPhotos.map(p => p.latitude);
-    const lngs = geotaggedPhotos.map(p => p.longitude);
-    const latDiff = Math.max(...lats) - Math.min(...lats);
-    const lngDiff = Math.max(...lngs) - Math.min(...lngs);
-    const maxDiff = Math.max(latDiff, lngDiff);
+    const lats = validPhotos.map(p => Number(p.latitude));
+    const lngs = validPhotos.map(p => Number(p.longitude));
+    const maxDiff = Math.max(
+        Math.max(...lats) - Math.min(...lats),
+        Math.max(...lngs) - Math.min(...lngs)
+    );
     
-    // Adjust zoom based on spread
     if (maxDiff > 50) return 3;
     if (maxDiff > 20) return 4;
     if (maxDiff > 10) return 5;
     if (maxDiff > 5) return 6;
-    if (maxDiff > 2) return 7;
-    if (maxDiff > 1) return 8;
-    return 10;
+    return 8;
+  }, [validPhotos]);
+
+  // 5. GENERATE MARKERS ONCE (The "Render Only Once" Fix)
+  // This prevents re-rendering thousands of markers on every interaction
+  const markerComponents = useMemo(() => {
+    return validPhotos.map((photo) => (
+        <Marker 
+          key={photo.id} 
+          position={[Number(photo.latitude), Number(photo.longitude)]}
+          photoId={photo.id} 
+          eventHandlers={{
+            click: () => handleMarkerClick(photo),
+          }}
+          // LIGHTWEIGHT ICON (No Image/Thumbnail)
+          icon={L.divIcon({
+            className: 'bg-transparent',
+            // Simple CSS Dot
+            html: `<div class="w-4 h-4 rounded-full bg-purple-600 border-2 border-white dark:border-slate-900 shadow-md hover:scale-150 transition-transform cursor-pointer"></div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8] // Center of the dot
+          })}
+        />
+    ));
+  }, [validPhotos]); // Only re-run if the DATA changes
+
+    // --- HANDLERS ---
+
+  // A. Handle Single Marker Click
+  const handleMarkerClick = (photo) => {
+    setViewerPhotos([photo]); // Only show this one photo (or you could show all)
+    setSelectedPhoto(photo);
+    setSelectedIndex(0);
   };
 
-  // Handle photo click from marker
-  const handlePhotoClick = (photo) => {
-    const index = geotaggedPhotos.findIndex(p => p.id === photo.id);
-    setSelectedPhoto(photo);
-    setSelectedIndex(index);
-    setClusterPhotos(geotaggedPhotos);
+  // B. Handle Cluster Click (The Logic Fix)
+  const handleClusterClick = (cluster) => {
+    // 1. Get all Leaflet markers inside this cluster
+    const leafMarkers = cluster.getAllChildMarkers();
+
+    // 2. Extract the 'id' we stored in the marker options
+    const clusterPhotoIds = leafMarkers.map(marker => marker.options.photoId);
+
+    // 3. Find the actual photo objects from our state
+    const photosInCluster = mapPhotos.filter(p => clusterPhotoIds.includes(p.id));
+
+    // 4. Open Viewer with ONLY these photos
+    if (photosInCluster.length > 0) {
+      setViewerPhotos(photosInCluster);
+      setSelectedPhoto(photosInCluster[0]);
+      setSelectedIndex(0);
+    }
   };
 
   const handleClose = () => {
     setSelectedPhoto(null);
     setSelectedIndex(null);
-    setClusterPhotos([]);
+    setViewerPhotos([]);
   };
 
   const handleNext = () => {
-    if (selectedIndex !== null && selectedIndex < clusterPhotos.length - 1) {
+    if (selectedIndex !== null && selectedIndex < viewerPhotos.length - 1) {
       const nextIndex = selectedIndex + 1;
       setSelectedIndex(nextIndex);
-      setSelectedPhoto(clusterPhotos[nextIndex]);
+      setSelectedPhoto(viewerPhotos[nextIndex]);
     }
   };
 
@@ -85,39 +163,48 @@ const MapView = ({ photos }) => {
     if (selectedIndex !== null && selectedIndex > 0) {
       const prevIndex = selectedIndex - 1;
       setSelectedIndex(prevIndex);
-      setSelectedPhoto(clusterPhotos[prevIndex]);
+      setSelectedPhoto(viewerPhotos[prevIndex]);
     }
   };
+
 
   return (
     <div className="relative">
       {/* Header Stats */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r 
-                       from-purple-600 via-indigo-600 to-violet-600
-                       dark:from-white dark:via-cyan-100 dark:to-teal-100 
-                       bg-clip-text text-transparent mb-2 flex items-center gap-3">
-            Map View
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 via-indigo-600 to-violet-600 dark:from-white dark:via-cyan-100 dark:to-teal-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
+            {searchQuery ? `Searching: "${searchQuery}"` : "Map View"}
           </h1>
           <p className="text-slate-600 dark:text-white/50 text-lg">
-            <span className="font-semibold text-purple-600 dark:text-cyan-400">{geotaggedPhotos.length}</span> geotagged photos
+            <span className="font-semibold text-purple-600 dark:text-cyan-400">
+              {validPhotos.length}
+            </span> geotagged photos
           </p>
         </div>
       </div>
 
-      {/* Map Container with Glassmorphism */}
+      {/* Map Container */}
       <div 
         style={{ height: 'calc(100vh - 20rem)' }} 
         className="relative rounded-3xl overflow-hidden glass-panel shadow-2xl border border-purple-400/20 dark:border-cyan-400/20"
       >
-
         <div className="relative z-10 h-full w-full rounded-3xl overflow-hidden">
+            
+          {/* Loading Overlay */}
+          {loading && (
+             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-[1px]">
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-purple-500 border-t-transparent"></div>
+             </div>
+          )}
+
           <MapContainer 
+            key={validPhotos.length} // Force re-center only when data size changes drastically
             attributionControl={false}
             center={center} 
-            zoom={getZoomLevel()} 
+            zoom={zoomLevel} 
             scrollWheelZoom={true} 
+            preferCanvas={true} // IMPORTANT for performance with many markers
             style={{ 
               height: '100%', 
               width: '100%', 
@@ -125,7 +212,6 @@ const MapView = ({ photos }) => {
               borderRadius: '1.5rem'
             }}
           >
-            {/* Map Tiles - Switch based on theme */}
             <TileLayer
               url={isDark 
                 ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -133,34 +219,18 @@ const MapView = ({ photos }) => {
               }
             />
 
-            {/* Marker Cluster Group */}
             <MarkerClusterGroup
-              chunkedLoading
-              zoomToBoundsOnClick={false}
-              showCoverageOnHover={false}
+              chunkedLoading // Process clusters in chunks to avoid UI freeze
+              onClick={(e) => {
+                if (e.layer && typeof e.layer.getAllChildMarkers === 'function') {
+                    handleClusterClick(e.layer);
+                }
+              }}
               maxClusterRadius={80}
               iconCreateFunction={(cluster) => {
                 const count = cluster.getChildCount();
-                
-                // Add click handler to cluster icon
-                setTimeout(() => {
-                  const clusterElement = cluster.getElement();
-                  if (clusterElement && !clusterElement.dataset.clickHandlerAdded) {
-                    clusterElement.dataset.clickHandlerAdded = 'true';
-                    clusterElement.style.cursor = 'pointer';
-                    // Add click handler to entire cluster element
-                    clusterElement.addEventListener('click', (e) => {
-                      e.stopPropagation();
-                      // Show all geotagged photos when clicking any cluster
-                      setClusterPhotos(geotaggedPhotos);
-                      setSelectedPhoto(geotaggedPhotos[0]);
-                      setSelectedIndex(0);
-                    });
-                  }
-                }, 0);
-                
                 return L.divIcon({
-                  html: `<div class="flex items-center justify-center w-12 h-12 rounded-full glass-panel border-2 border-purple-400 dark:border-cyan-400 shadow-glow-cyan hover:scale-110 transition-transform" style="pointer-events: auto;">
+                  html: `<div class="flex items-center justify-center w-12 h-12 rounded-full glass-panel border-2 border-purple-400 dark:border-cyan-400 shadow-glow-cyan hover:scale-110 transition-transform">
                           <span class="text-sm font-bold bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-cyan-400 dark:to-teal-400 bg-clip-text text-transparent">${count}</span>
                         </div>`,
                   className: 'custom-cluster-icon',
@@ -168,31 +238,13 @@ const MapView = ({ photos }) => {
                 });
               }}
             >
-              {/* Render Markers */}
-              {geotaggedPhotos.map((photo) => (
-                <Marker 
-                  key={photo.id} 
-                  position={[photo.latitude, photo.longitude]}
-                  photoId={photo.id}
-                  eventHandlers={{
-                    click: () => handlePhotoClick(photo),
-                  }}
-                  icon={L.divIcon({
-                    className: 'bg-transparent',
-                    html: `<div class="w-12 h-12 rounded-xl overflow-hidden border-2 border-purple-400 dark:border-cyan-400 shadow-lg hover:scale-110 transition-transform duration-200 cursor-pointer glass-panel">
-                            <img src="${photo.thumbnail_url}" class="w-full h-full object-cover" />
-                          </div>`,
-                    iconSize: [48, 48],
-                    iconAnchor: [24, 24]
-                  })}
-                />
-              ))}
+              {/* Render the MEMOIZED markers */}
+              {markerComponents}
             </MarkerClusterGroup>
           </MapContainer>
         </div>
       </div>
 
-      {/* Image Viewer */}
       {selectedPhoto && (
         <ImageViewer
           photo={selectedPhoto}
@@ -200,7 +252,7 @@ const MapView = ({ photos }) => {
           onNext={handleNext}
           onPrev={handlePrev}
           currentIndex={selectedIndex}
-          totalPhotos={clusterPhotos.length}
+          totalPhotos={viewerPhotos.length}
         />
       )}
     </div>

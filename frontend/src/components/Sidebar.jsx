@@ -17,13 +17,12 @@ const navigationItems = [
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
-export default function Sidebar({ onNavigate, activeView = 'photos', setActiveView }) {
+export default function Sidebar({ activeView = 'photos', setActiveView }) {
   const handleItemClick = (itemId) => {
     if (setActiveView) {
       setActiveView(itemId);
     }
     if (itemId === 'photos' && onNavigate) {
-      onNavigate();
       window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     }
   };

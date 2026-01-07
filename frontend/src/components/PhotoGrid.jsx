@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 
 import { Heart, Share2, Download, Trash2 } from "lucide-react";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 
 import { Virtuoso } from "react-virtuoso";
 
@@ -210,8 +210,13 @@ export default function PhotoGrid({
   photos = [],
   loading = false,
   searchQuery = "",
+  onLoadMore,
+  hasMore=true,
+  totalCount
 }) {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
+
+  const virtuosoRef = useRef(null);
 
   const sortedPhotos = useMemo(() => {
     return [...photos].sort((a, b) => {
@@ -227,6 +232,26 @@ export default function PhotoGrid({
 
   const getSortedIndex = (photo) => sortedPhotos.findIndex((p) => p.id === photo.id);
 
+  useEffect(() => {
+    if (selectedPhoto && virtuosoRef.current) {
+        // A. Find which "Row" contains this photo
+        const rowIndex = timelineRows.findIndex(row => 
+            row.type === 'photos' && row.items.some(p => p.id === selectedPhoto.id)
+        );
+
+        console.log("Syncing Scroll:", { photoId: selectedPhoto.id, rowIndex }); // <--- DEBUG LOG
+
+        // B. Scroll the background to that row (centered)
+        if (rowIndex !== -1) {
+            virtuosoRef.current.scrollToIndex({
+                index: rowIndex,
+                align: 'center',
+                behavior: 'auto' // Instant scroll, use 'smooth' if you prefer animation
+            });
+        }
+    }
+  }, [selectedPhoto, timelineRows]); // Run whenever photo changes
+
   const handlePhotoClick = (photo) => {
     setSelectedPhoto(photo);
   };
@@ -234,11 +259,6 @@ export default function PhotoGrid({
   const handleClose = () => {
     setSelectedPhoto(null);
   };
-
-  // Helper to find index in original list for Next/Prev logic
-
-  const getOriginalIndex = (photo) =>
-    photos.findIndex((p) => p.id === photo.id);
 
   const handleNext = () => {
     const currentIdx = getSortedIndex(selectedPhoto);
@@ -252,7 +272,7 @@ export default function PhotoGrid({
     const currentIdx = getSortedIndex(selectedPhoto);
 
     if (currentIdx > 0) {
-      setSelectedPhoto(photos[currentIdx - 1]);
+      setSelectedPhoto(sortedPhotos[currentIdx - 1]);
     }
   };
 
@@ -276,6 +296,14 @@ export default function PhotoGrid({
     }
 
     return formatted;
+  };
+
+  const Footer = () => {
+    return loading && hasMore ? (
+      <div className="py-8 flex justify-center w-full">
+         <div className="w-8 h-8 border-4 border-purple-600/30 border-t-purple-600 rounded-full animate-spin" />
+      </div>
+    ) : null;
   };
 
   // --- Loading State ---
@@ -341,7 +369,7 @@ bg-clip-text text-transparent mb-2"
 
           <p className="text-slate-600 dark:text-white/50 text-lg">
             <span className="font-semibold text-purple-600 dark:text-cyan-400">
-              {photos.length}
+              {totalCount}
             </span>{" "}
             {searchQuery ? "search results" : "photos"}
           </p>
@@ -352,8 +380,11 @@ bg-clip-text text-transparent mb-2"
 
       <Virtuoso
         useWindowScroll
+        ref={virtuosoRef}
         data={timelineRows}
         overscan={500}
+        endReached={() => { if (hasMore && !loading) onLoadMore(); }}
+        components={{ Footer }}
         itemContent={(index, row) => {
           // 1. Year Header
 
@@ -418,7 +449,7 @@ bg-clip-text text-transparent mb-2"
           onNext={handleNext}
           onPrev={handlePrev}
           currentIndex={getSortedIndex(selectedPhoto)}
-          totalPhotos={sortedPhotos.length}
+          totalPhotos={totalCount}
         />
       )}
     </div>
