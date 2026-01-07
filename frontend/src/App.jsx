@@ -57,6 +57,7 @@ function App() {
       setPhotos([]);
     } finally {
       setLoading(false);
+      window.scrollTo(0, 0);
     }
   };
 
@@ -65,6 +66,7 @@ function App() {
     setSearchQuery('');
     setSearchInputValue('');
     loadThumbnails();
+    window.scrollTo(0, 0);
   };
 
 
