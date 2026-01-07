@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Heart, Share2, Download, MoreVertical } from 'lucide-react';
+import { Heart, Share2, Download, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import Masonry from "react-masonry-css";
 import ImageViewer from './ImageViewer';
@@ -136,14 +136,15 @@ function PhotoCard({ photo, index, onClick }) {
             <motion.button
               onClick={(e) => {
                 e.stopPropagation();
-                // TODO: Add more options menu
+                // TODO: Add delete functionality
               }}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className="p-2 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
-                       hover:bg-white/20 transition-all duration-200"
+                       hover:bg-red-500/30 hover:border-red-400/50 
+                       transition-all duration-200 group/btn"
             >
-              <MoreVertical className="w-4 h-4 text-white/70" />
+              <Trash2 className="w-4 h-4 text-white/70 group-hover/btn:text-red-400 transition-colors" />
             </motion.button>
           </div>
         </motion.div>
