@@ -1,14 +1,18 @@
-from fastapi import Depends, APIRouter
+from fastapi import Depends, APIRouter, Response
 from sqlalchemy.orm import Session
 from app.core.database import get_db, engine
 from app import models
 from app.ml.clip_client import generate_text_embedding
+import hashlib
+from app.core.config import settings
+
+backend_url = settings.HOST_URL
 
 
 router = APIRouter()
 
 @router.post("/search")
-def search_photos(query: str, threshold: float = 0.8, db: Session = Depends(get_db)):
+def search_photos(response: Response, query: str, threshold: float = 0.8, db: Session = Depends(get_db)):
     """
     Finds photos based on semantic similarity.
     
@@ -17,6 +21,12 @@ def search_photos(query: str, threshold: float = 0.8, db: Session = Depends(get_
                0.3 is standard.
                0.4 is loose (conceptual matches).
     """
+    # FORCE NO CACHE for the API JSON list
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+
     # 1. Convert text to vector
     text_vector = generate_text_embedding(query)
     
@@ -41,8 +51,9 @@ def search_photos(query: str, threshold: float = 0.8, db: Session = Depends(get_
         response.append({
             "id": img.id,
             "filename": img.filename,
+            "thumbnail_url": f"{backend_url}/thumbnails/thumb_{hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}.jpg", # Magic URL for thumbnail
+            "image_url": f"/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "score": f"{score}%",
-            "path": img.file_path,
             "date": img.capture_date,
             "latitude": img.latitude,
             "longitude": img.longitude,

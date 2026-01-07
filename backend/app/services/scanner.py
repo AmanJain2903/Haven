@@ -10,6 +10,7 @@ from app.core.config import settings
 from PIL.TiffImagePlugin import IFDRational
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+import hashlib
 
 # Register HEIC support (More images to be supported in later updates of Haven)
 register_heif_opener()
@@ -191,10 +192,10 @@ def ensure_thumbnail(file_path: str, filename: str) -> str:
     # Ensure thumbnail directory exists
     ensure_thumbnail_dir()
 
-    # Create output filename (e.g., thumb_IMG_1234.jpg)
-    # rsplit removes the extension safely
-    name_part = filename.rsplit('.', 1)[0]
-    thumb_filename = f"thumb_{name_part}.jpg"
+    # --- Generate Unique Hash based on Full Path ---
+    # This ensures /folderA/img.jpg and /folderB/img.jpg get different thumbnails
+    path_hash = hashlib.md5(file_path.encode('utf-8')).hexdigest()
+    thumb_filename = f"thumb_{path_hash}.jpg"
     thumb_path = os.path.join(THUMBNAIL_DIR, thumb_filename)
     
     # If it already exists, we are good

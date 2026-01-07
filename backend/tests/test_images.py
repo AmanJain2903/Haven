@@ -374,10 +374,11 @@ class TestGetThumbnailEndpoint:
         
         response = client.get(f"/api/v1/images/thumbnail/{test_image.id}")
         
-        # Should serve the thumbnail
+        # Should serve the thumbnail (hash-based filename)
         mock_file_response.assert_called_once()
         call_args = mock_file_response.call_args[0][0]
-        assert "thumb_photo.jpg" in call_args
+        assert "thumb_" in call_args
+        assert call_args.endswith(".jpg")
 
     @patch('app.api.v1.endpoints.images.os.path.exists')
     @patch('app.api.v1.endpoints.images.FileResponse')
@@ -418,6 +419,7 @@ class TestGetThumbnailEndpoint:
         
         response = client.get(f"/api/v1/images/thumbnail/{heic_image.id}")
         
-        # Thumbnail should be .jpg even though source is .heic
+        # Thumbnail should be .jpg even though source is .heic (hash-based filename)
         call_args = mock_file_response.call_args[0][0]
-        assert "thumb_photo.jpg" in call_args
+        assert "thumb_" in call_args
+        assert call_args.endswith(".jpg")

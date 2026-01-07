@@ -108,18 +108,20 @@ class TestGetGeotagging:
 class TestScanDirectory:
     """Test suite for directory scanning"""
 
+    @patch('app.services.scanner.get_location_parts')
     @patch('app.services.scanner.ensure_thumbnail')
     @patch('app.services.scanner.PILImage.open')
     @patch('app.services.scanner.os.walk')
     @patch('app.services.scanner.os.path.getsize')
-    def test_scan_finds_images(self, mock_getsize, mock_walk, mock_pil, mock_thumbnail, db_session):
+    def test_scan_finds_images(self, mock_getsize, mock_walk, mock_pil, mock_thumbnail, mock_location, db_session):
         """Test that scan finds and processes images"""
         # Mock directory structure
         mock_walk.return_value = [
             ('/test', [], ['photo1.jpg', 'photo2.png', 'document.txt'])
         ]
         mock_getsize.return_value = 1024000
-        mock_thumbnail.return_value = 'thumb_test.jpg'
+        mock_thumbnail.return_value = 'thumb_test123.jpg'
+        mock_location.return_value = None
         
         # Mock PIL image with size property
         mock_img = MagicMock()
@@ -210,17 +212,19 @@ class TestScanDirectory:
         images = db_session.query(Image).all()
         assert len(images) == 1
 
+    @patch('app.services.scanner.get_location_parts')
     @patch('app.services.scanner.ensure_thumbnail')
     @patch('app.services.scanner.PILImage.open')
     @patch('app.services.scanner.os.walk')
-    def test_scan_handles_errors_gracefully(self, mock_walk, mock_pil, mock_thumbnail, db_session):
+    def test_scan_handles_errors_gracefully(self, mock_walk, mock_pil, mock_thumbnail, mock_location, db_session):
         """Test that scan continues after encountering errors"""
         mock_walk.return_value = [
             ('/test', [], ['good.jpg', 'corrupted.jpg', 'another_good.png'])
         ]
+        mock_location.return_value = None
         
         # Mock thumbnail creation to succeed
-        mock_thumbnail.return_value = 'thumb_test.jpg'
+        mock_thumbnail.return_value = 'thumb_test456.jpg'
         
         # Create mock images with size property
         mock_img1 = MagicMock()
@@ -250,15 +254,17 @@ class TestScanDirectory:
         # Should process 2 out of 3 images
         assert count == 2
 
+    @patch('app.services.scanner.get_location_parts')
     @patch('app.services.scanner.ensure_thumbnail')
     @patch('app.services.scanner.PILImage.open')
     @patch('app.services.scanner.os.walk')
     @patch('app.services.scanner.os.path.getsize')
-    def test_scan_extracts_capture_date(self, mock_getsize, mock_walk, mock_pil, mock_thumbnail, db_session):
+    def test_scan_extracts_capture_date(self, mock_getsize, mock_walk, mock_pil, mock_thumbnail, mock_location, db_session):
         """Test extraction of capture date from EXIF"""
         mock_walk.return_value = [('/test', [], ['dated.jpg'])]
         mock_getsize.return_value = 1024000
-        mock_thumbnail.return_value = 'thumb_dated.jpg'
+        mock_thumbnail.return_value = 'thumb_dated789.jpg'
+        mock_location.return_value = None
         
         # Mock image with date
         mock_img = MagicMock()
@@ -279,8 +285,9 @@ class TestScanDirectory:
         assert image.capture_date.month == 12
         assert image.capture_date.day == 25
 
+    @patch('app.services.scanner.get_location_parts')
     @patch('app.services.scanner.os.walk')
-    def test_scan_filters_supported_formats(self, mock_walk, db_session):
+    def test_scan_filters_supported_formats(self, mock_walk, mock_location, db_session):
         """Test that scan only processes supported image formats"""
         mock_walk.return_value = [
             ('/test', [], [
@@ -294,8 +301,9 @@ class TestScanDirectory:
                 'data.txt'
             ])
         ]
+        mock_location.return_value = None
         
-        with patch('app.services.scanner.ensure_thumbnail', return_value='thumb_test.jpg'):
+        with patch('app.services.scanner.ensure_thumbnail', return_value='thumb_abc.jpg'):
             with patch('app.services.scanner.PILImage.open') as mock_pil:
                 with patch('app.services.scanner.os.path.getsize', return_value=1024):
                     mock_img = MagicMock()
@@ -327,7 +335,9 @@ class TestEnsureThumbnail:
         
         result = ensure_thumbnail('/test/photo.jpg', 'photo.jpg')
         
-        assert result == 'thumb_photo.jpg'
+        # Should return hash-based filename
+        assert result.startswith('thumb_')
+        assert result.endswith('.jpg')
         # Should not try to open the image
         mock_pil.assert_not_called()
 
@@ -353,7 +363,9 @@ class TestEnsureThumbnail:
         
         result = ensure_thumbnail('/test/photo.jpg', 'photo.jpg')
         
-        assert result == 'thumb_photo.jpg'
+        # Should return hash-based filename
+        assert result.startswith('thumb_')
+        assert result.endswith('.jpg')
         mock_img_rgb.thumbnail.assert_called_once_with((300, 300))
         mock_img_rgb.save.assert_called_once()
 
@@ -379,7 +391,9 @@ class TestEnsureThumbnail:
         
         result = ensure_thumbnail('/test/photo.heic', 'photo.heic')
         
-        assert result == 'thumb_photo.jpg'  # Should save as .jpg
+        # Should return hash-based filename saved as .jpg
+        assert result.startswith('thumb_')
+        assert result.endswith('.jpg')
         mock_img_rgb.save.assert_called_once()
         # Verify it's saved as JPEG
         save_args = mock_img_rgb.save.call_args

@@ -11,6 +11,7 @@ from typing import List
 from PIL import Image
 import pillow_heif
 import io
+import hashlib
 from app.core.config import settings
 
 backend_url = settings.HOST_URL
@@ -58,10 +59,15 @@ def process_images(limit: int = 50, db: Session = Depends(get_db)):
     return {"status": "success", "processed": count}
 
 @router.get("/", response_model=List[dict])
-def get_images(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_images(response: Response,skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """
     Fetch a list of images to display in the grid.
     """
+    # FORCE NO CACHE for the API JSON list
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     images = db.query(models.Image).offset(skip).limit(limit).all()
     
     # Transform to JSON
@@ -69,8 +75,8 @@ def get_images(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
         {
             "id": img.id,
             "filename": img.filename,
-            "thumbnail_url": f"{backend_url}/thumbnails/thumb_{img.filename.rsplit('.', 1)[0]}.jpg", # Magic URL for thumbnail
-            "image_url": f"/api/v1/images/file/{img.id}", # Magic URL for the full image
+            "thumbnail_url": f"{backend_url}/thumbnails/thumb_{hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}.jpg", # Magic URL for thumbnail
+            "image_url": f"/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "date": img.capture_date,
             "latitude": img.latitude,
             "longitude": img.longitude,
@@ -143,8 +149,8 @@ def get_thumbnail_file(image_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404)
         
     # Construct expected thumbnail path
-    name_part = img.filename.rsplit('.', 1)[0]
-    thumb_filename = f"thumb_{name_part}.jpg"
+    path_hash = hashlib.md5(img.file_path.encode('utf-8')).hexdigest()
+    thumb_filename = f"thumb_{path_hash}.jpg"
     thumb_path = os.path.join(settings.THUMBNAIL_DIR, thumb_filename)
     
     # If thumbnail exists, serve it
