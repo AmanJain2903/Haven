@@ -3,9 +3,9 @@ import axios from 'axios';
 const API_URL = 'http://localhost:8000/api/v1';
 
 export const api = {
-  // Fetch all photos
+  // Fetch all photos for timeline view
   getThumbnails: async () => {
-    const response = await axios.get(`${API_URL}/images/`);
+    const response = await axios.get(`${API_URL}/images/timeline`);
     for (let photo of response.data) {
       photo.thumbnail_url = api.getThumbnailUrl(photo.id);
       photo.image_url = api.getImageUrl(photo.id);

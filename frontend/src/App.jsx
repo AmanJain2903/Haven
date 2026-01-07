@@ -64,7 +64,6 @@ function App() {
   const handleReset = () => {
     setSearchQuery('');
     setSearchInputValue('');
-    setActiveView('photos');
     loadThumbnails();
   };
 

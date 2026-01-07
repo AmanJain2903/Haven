@@ -1,6 +1,7 @@
 import os
 from fastapi import Depends, APIRouter, Response
 from sqlalchemy.orm import Session
+from sqlalchemy import desc, case
 from app.core.database import get_db, engine
 from app import models
 from app.services.scanner import scan_directory 
@@ -67,7 +68,7 @@ def get_images(response: Response,skip: int = 0, limit: int = 100, db: Session =
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    
+
     images = db.query(models.Image).offset(skip).limit(limit).all()
     
     # Transform to JSON
@@ -160,3 +161,54 @@ def get_thumbnail_file(image_id: int, db: Session = Depends(get_db)):
     # Fallback: If no thumbnail exists, serve the original
     # This prevents broken images if the scan missed one
     return FileResponse(img.file_path)
+
+@router.get("/timeline", response_model=List[dict])
+def get_timeline(
+    response: Response,
+    skip: int = 0, 
+    limit: int = 500, # Larger chunks for virtualization
+    db: Session = Depends(get_db)
+):
+    # FORCE NO CACHE 
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    # 1. Sort Logic: Dates first (Newest to Oldest), then Nulls last
+    # This SQL trickery ensures clean ordering
+    images = db.query(models.Image).order_by(
+        case(
+            (models.Image.capture_date != None, 0), # Dates first
+            else_=1 # Nulls last
+        ),
+        desc(models.Image.capture_date),
+        desc(models.Image.id) # Secondary sort for stability
+    ).offset(skip).limit(limit).all()
+    
+    # 2. Return Flat List (Transformation happens on client)
+    return [
+        {
+            "id": img.id,
+            "filename": img.filename,
+            "thumbnail_url": f"{backend_url}/thumbnails/thumb_{hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}.jpg", # Magic URL for thumbnail
+            "image_url": f"/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+            "date": img.capture_date,
+            "latitude": img.latitude,
+            "longitude": img.longitude,
+            "city": img.city,
+            "state": img.state,
+            "country": img.country,
+            "width": img.width,
+            "height": img.height,
+            "megapixels": img.megapixels,
+            "metadata": {
+                "camera_make": img.camera_make,
+                "camera_model": img.camera_model,
+                "exposure_time": img.exposure_time,
+                "f_number": img.f_number,
+                "iso": img.iso,
+                "focal_length": img.focal_length,
+                "size_bytes": img.file_size
+        }
+            
+        }
+        for img in images
+    ]

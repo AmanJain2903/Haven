@@ -186,24 +186,43 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
             )}
           </motion.div>
 
-          {/* Search Button */}
+          {/* Search/Reset Button */}
           {searchValue && (
-            <motion.button
-              type="submit"
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              style={{willChange: 'transform'}}
-              exit={{ scale: 0, opacity: 0 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="px-4 py-2 rounded-full bg-gradient-to-r 
-                       from-purple-500 to-indigo-600
-                       dark:from-cyan-500 dark:to-teal-500 
-                       text-white font-medium text-sm shadow-glow-cyan
-                       hover:shadow-glow-cyan-lg transition-all duration-300"
-            >
-              Search
-            </motion.button>
+            searchValue === externalSearchValue && externalSearchValue ? (
+              <motion.button
+                type="button"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                style={{willChange: 'transform'}}
+                exit={{ scale: 0, opacity: 0 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-2 rounded-full bg-gradient-to-r from-slate-400 to-slate-600 dark:from-slate-600 dark:to-slate-800 text-white font-medium text-sm transition-all duration-300 shadow-[0_0_16px_0_rgba(139,92,246,0.35)] dark:shadow-[0_0_16px_0_rgba(6,182,212,0.35)] hover:shadow-[0_0_24px_0_rgba(139,92,246,0.5)] dark:hover:shadow-[0_0_24px_0_rgba(6,182,212,0.5)]"
+                onClick={() => {
+                  setSearchValue('');
+                  if (onClearSearch) onClearSearch();
+                }}
+              >
+                Reset
+              </motion.button>
+            ) : (
+              <motion.button
+                type="submit"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                style={{willChange: 'transform'}}
+                exit={{ scale: 0, opacity: 0 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-2 rounded-full bg-gradient-to-r 
+                         from-purple-500 to-indigo-600
+                         dark:from-cyan-500 dark:to-teal-500 
+                         text-white font-medium text-sm shadow-glow-cyan
+                         hover:shadow-glow-cyan-lg transition-all duration-300"
+              >
+                Search
+              </motion.button>
+            )
           )}
         </form>
 
