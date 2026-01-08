@@ -4,7 +4,7 @@ from app.models import Image
 from app.tasks import task_process_image, task_process_video, task_process_raw
 
 # Define extensions for routing
-IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.heic', '.webp'}
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
 VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv'}
 RAW_EXTS   = {'.arw', '.cr2', '.nef', '.dng'}
 
