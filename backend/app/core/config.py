@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "haven_db_fallback")
 
+    # Redis settings
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+
     # Where the raw photos live (NAS/HDD)
     PHOTOS_DIR: str = os.getenv("PHOTOS_DIR", "/photos")
     

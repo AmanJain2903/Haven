@@ -11,7 +11,7 @@ class Image(Base):
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, index=True)
     file_size = Column(Integer)
-    capture_date = Column(DateTime(timezone=True), server_default=func.now())
+    capture_date = Column(DateTime(timezone=True), nullable=True)
     
     # GPS Data
     latitude = Column(Float, nullable=True)

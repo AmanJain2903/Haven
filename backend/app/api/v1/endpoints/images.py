@@ -4,8 +4,6 @@ from sqlalchemy.orm import Session, load_only
 from sqlalchemy import desc, case
 from app.core.database import get_db, engine
 from app import models
-from app.services.scanner import scan_directory 
-from app.ml.clip_client import generate_embedding
 from fastapi.responses import FileResponse
 from fastapi import HTTPException
 from typing import List
@@ -19,38 +17,6 @@ from app.core.config import settings
 backend_url = settings.HOST_URL
 
 router = APIRouter()
-
-@router.post("/process")
-def process_images(limit: int = 50, db: Session = Depends(get_db)):
-    """
-    Loops through images that don't have embeddings yet and generates them.
-    """
-    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
-    if not config or not config.value:
-        raise HTTPException(status_code=503, detail="Storage not configured")
-
-    # 1. Find images where embedding is NULL
-    images = db.query(models.Image).filter(models.Image.embedding == None).limit(limit).all()
-    
-    if not images:
-        return {"message": "No new images to process."}
-
-    count = 0
-    print(f"Found {len(images)} images to process...")
-    
-    for img in images:
-        # 2. Generate the Vector
-        vector = generate_embedding(os.path.join(config.value, 'images', img.filename))
-        
-        if vector:
-            # 3. Save to DB
-            img.embedding = vector
-            img.is_processed = True
-            count += 1
-            print(f"Processed: {img.filename}")
-            
-    db.commit()
-    return {"status": "success", "processed": count}
 
 @router.get("/", response_model=List[dict])
 def get_images(response: Response,skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

@@ -1,37 +1,41 @@
 import os
-from fastapi import Depends, APIRouter, Response
-from sqlalchemy.orm import Session, load_only
-from sqlalchemy import desc, case
-from app.core.database import get_db, engine
+from fastapi import Depends, APIRouter, HTTPException
+from sqlalchemy.orm import Session
+from app.core.database import get_db
 from app import models
-from app.services.scanner import scan_directory 
-from app.ml.clip_client import generate_embedding
-from fastapi.responses import FileResponse
-from fastapi import HTTPException
-from typing import List
-from PIL import Image
-import pillow_heif
-import io
-import hashlib
-from app.core.config import settings
 
-
-backend_url = settings.HOST_URL
+# Import the "Traffic Cop" scanner we just wrote
+# Ensure the function name in app/services/scanner.py matches this (scan_directory vs scan_directory_flat)
+from app.services.scanner import scan_directory_flat as scan_directory 
 
 router = APIRouter()
 
 @router.post("/scan")
 def trigger_scan(db: Session = Depends(get_db)):
     """
-    Trigger a scan of a specific folder path.
-    Example payload: /scan?path=/Users/aman/Documents/Work/Haven/test_photos
+    Trigger a background scan of the configured storage path.
     """
+    # 1. Get Path from DB
     config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
     if not config or not config.value:
-        raise HTTPException(status_code=503, detail="Storage not configured")
+        raise HTTPException(status_code=503, detail="Storage path not configured")
+    
     path = config.value
+
+    # 2. Check if Drive is Connected
+    if not os.path.exists(path):
+         raise HTTPException(status_code=503, detail="Storage drive not connected/mounted.")
+
     try:
-        count = scan_directory(path, db)
-        return {"status": "success", "images_added": count}
+        # 3. Trigger the Traffic Cop
+        # This function runs fast, dispatches Celery tasks, and returns the count of NEW items found.
+        # Note: We renamed it scan_directory_flat in the previous step, so I aliased it above.
+        queued_count = scan_directory(path, db)
+        
+        return {
+            "status": "success", 
+            "message": "Scan started in background", 
+            "tasks_queued": queued_count
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}
