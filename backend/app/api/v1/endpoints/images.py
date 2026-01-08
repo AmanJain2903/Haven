@@ -101,6 +101,41 @@ def get_images(response: Response,skip: int = 0, limit: int = 100, db: Session =
         for img in images
     ]
 
+@router.get("/details/{image_id}", response_model=dict)
+def get_image_details(image_id: int, db: Session = Depends(get_db)):
+    """
+    Fetch detailed info for a specific image by ID.
+    """
+    img = db.query(models.Image).filter(models.Image.id == image_id).first()
+    
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    return {
+        "id": img.id,
+        "filename": img.filename,
+        "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+        "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+        "date": img.capture_date,
+        "latitude": img.latitude,
+        "longitude": img.longitude,
+        "city": img.city,
+        "state": img.state,
+        "country": img.country,
+        "width": img.width,
+        "height": img.height,
+        "megapixels": img.megapixels,
+        "metadata": {
+            "camera_make": img.camera_make,
+            "camera_model": img.camera_model,
+            "exposure_time": img.exposure_time,
+            "f_number": img.f_number,
+            "iso": img.iso,
+            "focal_length": img.focal_length,
+            "size_bytes": img.file_size
+        }
+    }
+
 @router.get("/file/{image_id}")
 def get_image_file(image_id: int, db: Session = Depends(get_db)):
     """
@@ -227,6 +262,13 @@ def get_map_data(db: Session = Depends(get_db)):
     query = db.query(models.Image).filter(
         models.Image.latitude != None,
         models.Image.longitude != None
+    ).order_by(
+        case(
+            (models.Image.capture_date != None, 0), # Dates first
+            else_=1 # Nulls last
+        ),
+        desc(models.Image.capture_date),
+        desc(models.Image.id) # Secondary sort for stability
     )
     
     # 2. Select specific columns to reduce payload size (Optimization)
@@ -246,7 +288,6 @@ def get_map_data(db: Session = Depends(get_db)):
             "latitude": img.latitude,
             "longitude": img.longitude,
             "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
-            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
         })
     
     return response

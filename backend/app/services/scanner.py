@@ -245,7 +245,7 @@ def scan_directory(directory_path: str, db: Session):
                     img = PILImage.open(file_path)
                     
                     # 1. Get Date
-                    capture_date = datetime.now() # Default
+                    capture_date = None # Default Null
                     # Try getting the standard Exif object
                     exif = img.getexif()
                     if exif:
@@ -308,6 +308,7 @@ def scan_directory(directory_path: str, db: Session):
                         is_processed=False
                     )
                     db.add(db_image)
+                    db.commit() # All or nothing principle not follwed here
                     count += 1
                     location_str = f" | Location: {city}, {state}, {country}" if city or state or country else ""
                     print(f"Found: {file} | Date: {capture_date} | GPS: {lat}, {lon}{location_str}")
@@ -315,5 +316,4 @@ def scan_directory(directory_path: str, db: Session):
                 except Exception as e:
                     print(f"Error processing {file}: {e}")
 
-    db.commit() # All or nothing principle follwed here
     return count

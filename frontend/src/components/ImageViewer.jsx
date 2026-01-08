@@ -2,9 +2,15 @@ import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Heart, Share2, Do
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../contexts/ThemeContext';
+import { api } from '../api'; // Import your API helper
 
 const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos }) => {
   const { isDark } = useTheme();
+  
+  // --- NEW STATE: Active Photo Data ---
+  // We initialize this with the prop 'photo' so the UI renders immediately.
+  const [activePhoto, setActivePhoto] = useState(photo);
+
   const [direction, setDirection] = useState(0);
   const [prevIndex, setPrevIndex] = useState(currentIndex);
   const [showMetadata, setShowMetadata] = useState(false);
@@ -15,7 +21,37 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
-  if (!photo) return null;
+  // --- FETCH DETAILS LOGIC ---
+  useEffect(() => {
+    if (!photo) return;
+
+    // 1. Reset to the basic prop data immediately when the index changes.
+    // This ensures the transition is instant and we don't show the previous photo's details.
+    setActivePhoto(photo);
+
+    let isMounted = true;
+
+    const fetchDetailedData = async () => {
+      try {
+        // 2. Call the API
+        const details = await api.getImageDetails(photo.id);
+        
+        // 3. Update state only if the component is still mounted and looking at the same photo
+        if (isMounted && details && details.id === photo.id) {
+          setActivePhoto(details);
+        }
+      } catch (error) {
+        console.error("Failed to fetch detailed image data, using fallback.", error);
+        // We do nothing here, because activePhoto is already set to the 'photo' prop (fallback)
+      }
+    };
+
+    fetchDetailedData();
+
+    return () => { isMounted = false; };
+  }, [photo]); // Run whenever the input photo object changes
+
+  if (!activePhoto) return null;
 
   const hasNext = currentIndex < totalPhotos - 1;
   const hasPrev = currentIndex > 0;
@@ -205,7 +241,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
               
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div 
-                  key={photo.id} 
+                  key={activePhoto.id} 
                   className="relative flex items-center justify-center"
                   animate={{ 
                     scale: scale,
@@ -222,8 +258,8 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                       animate={{ opacity: 1 }}
                       style={{willChange: 'opacity'}}
                       transition={{ duration: 0.2 }}
-                      src={photo.thumbnail_url} 
-                      alt={photo.filename}
+                      src={activePhoto.thumbnail_url} 
+                      alt={activePhoto.filename}
                       className="max-h-[70vh] max-w-full object-contain rounded-2xl shadow-2xl blur-sm"
                     />
                   )}
@@ -233,8 +269,8 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     initial={{ opacity: 0 }}
                     animate={{ opacity: imageLoaded ? 1 : 0 }}
                     transition={{ duration: 0.3 }}
-                    src={photo.image_url} 
-                    alt={photo.filename}
+                    src={activePhoto.image_url} 
+                    alt={activePhoto.filename}
                     onLoad={() => setImageLoaded(true)}
                     className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
                     style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
@@ -276,12 +312,12 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Filename</span>
-                      <span className="font-medium truncate max-w-[180px]">{photo.filename}</span>
+                      <span className="font-medium truncate max-w-[180px]">{activePhoto.filename}</span>
                     </div>
                   </div>
 
                   {/* File Size */}
-                  {photo.metadata?.size_bytes && (
+                  {activePhoto.metadata?.size_bytes && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-purple-500/10 dark:bg-violet-500/10">
                         <HardDrive className="w-4 h-4 text-purple-600 dark:text-violet-400" />
@@ -289,23 +325,23 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">File Size</span>
                         <span className="font-medium">
-                          {photo.metadata.size_bytes < 1024 * 1024 
-                            ? `${(photo.metadata.size_bytes / 1024).toFixed(1)} KB`
-                            : `${(photo.metadata.size_bytes / (1024 * 1024)).toFixed(2)} MB`}
+                          {activePhoto.metadata.size_bytes < 1024 * 1024 
+                            ? `${(activePhoto.metadata.size_bytes / 1024).toFixed(1)} KB`
+                            : `${(activePhoto.metadata.size_bytes / (1024 * 1024)).toFixed(2)} MB`}
                         </span>
                       </div>
                     </div>
                   )}
 
                   {/* Dimensions */}
-                  {photo.width && photo.height && (
+                  {activePhoto.width && activePhoto.height && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-blue-500/10 dark:bg-sky-500/10">
                         <Maximize className="w-4 h-4 text-blue-600 dark:text-sky-400" />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Dimensions</span>
-                        <span className="font-medium">{photo.width}px × {photo.height}px</span>
+                        <span className="font-medium">{activePhoto.width}px × {activePhoto.height}px</span>
                       </div>
                     </div>
                   )}
@@ -314,7 +350,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                 {/* Column 2: Camera Details */}
                 <div className="flex flex-col gap-3">
                   {/* Camera Make & Model */}
-                  {(photo.metadata?.camera_make || photo.metadata?.camera_model) && (
+                  {(activePhoto.metadata?.camera_make || activePhoto.metadata?.camera_model) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-amber-500/10 dark:bg-yellow-500/10">
                         <Camera className="w-4 h-4 text-amber-600 dark:text-yellow-400" />
@@ -322,14 +358,14 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Camera</span>
                         <span className="font-medium">
-                          {[photo.metadata.camera_make, photo.metadata.camera_model].filter(Boolean).join(' ')}
+                          {[activePhoto.metadata.camera_make, activePhoto.metadata.camera_model].filter(Boolean).join(' ')}
                         </span>
                       </div>
                     </div>
                   )}
 
                   {/* Exposure Settings */}
-                  {(photo.metadata?.exposure_time || photo.metadata?.iso || photo.metadata?.f_number || photo.metadata?.focal_length) && (
+                  {(activePhoto.metadata?.exposure_time || activePhoto.metadata?.iso || activePhoto.metadata?.f_number || activePhoto.metadata?.focal_length) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-emerald-500/10 dark:bg-green-500/10">
                         <Aperture className="w-4 h-4 text-emerald-600 dark:text-green-400" />
@@ -338,10 +374,10 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                         <span className="text-xs opacity-70">Settings</span>
                         <span className="font-medium">
                           {[
-                            photo.metadata.exposure_time && `${photo.metadata.exposure_time}`,
-                            photo.metadata.f_number && `f/${photo.metadata.f_number}`,
-                            photo.metadata.iso && `ISO ${photo.metadata.iso}`,
-                            photo.metadata.focal_length && `${photo.metadata.focal_length}mm`
+                            activePhoto.metadata.exposure_time && `${activePhoto.metadata.exposure_time}`,
+                            activePhoto.metadata.f_number && `f/${activePhoto.metadata.f_number}`,
+                            activePhoto.metadata.iso && `ISO ${activePhoto.metadata.iso}`,
+                            activePhoto.metadata.focal_length && `${activePhoto.metadata.focal_length}mm`
                           ].filter(Boolean).join(' • ')}
                         </span>
                       </div>
@@ -349,14 +385,14 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                   )}
 
                   {/* Megapixels */}
-                  {photo.megapixels && (
+                  {activePhoto.megapixels && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-pink-500/10 dark:bg-rose-500/10">
                         <Layers className="w-4 h-4 text-pink-600 dark:text-rose-400" />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Megapixels</span>
-                        <span className="font-medium">{photo.megapixels.toFixed(1)} MP</span>
+                        <span className="font-medium">{activePhoto.megapixels.toFixed(1)} MP</span>
                       </div>
                     </div>
                   )}
@@ -365,7 +401,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                 {/* Column 3: Location & Date */}
                 <div className="flex flex-col gap-3">
                   {/* Location */}
-                  {(photo.city || photo.state || photo.country) && (
+                  {(activePhoto.city || activePhoto.state || activePhoto.country) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-green-500/10 dark:bg-teal-500/10">
                         <MapPin className="w-4 h-4 text-green-600 dark:text-teal-400" />
@@ -373,7 +409,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Location</span>
                         <span className="font-medium">
-                          {[photo.city, photo.state, photo.country].filter(Boolean).join(', ')}
+                          {[activePhoto.city, activePhoto.state, activePhoto.country].filter(Boolean).join(', ')}
                         </span>
                       </div>
                     </div>
@@ -386,7 +422,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Capture Date</span>
-                      <span className="font-medium">{new Date(photo.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                      <span className="font-medium">{new Date(activePhoto.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     </div>
                   </div>
 
@@ -398,7 +434,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Capture Time (UTC)</span>
                       <span className="font-medium">
-                        {new Date(photo.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {new Date(activePhoto.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
                       </span>
               </div>
             </div>
