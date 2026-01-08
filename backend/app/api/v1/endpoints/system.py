@@ -90,9 +90,9 @@ def check_system_status(db: Session = Depends(get_db)):
             "message": "Storage active and connected."
         }
     else:
-        # CASE C: Path configured, but HDD unplugged
+        # CASE C: Path configured, but HavenVault unplugged
         return {
             "storage_path": path,
             "is_connected": False,
-            "message": "Storage disconnected. Please connect the drive."
+            "message": "Storage disconnected. Please connect the HavenVault."
         }

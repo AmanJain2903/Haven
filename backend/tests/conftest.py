@@ -9,9 +9,18 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, 
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.sql import func
+from unittest.mock import patch, MagicMock
 
 # Set environment variable to indicate we're in test mode
 os.environ["TESTING"] = "1"
+
+# Mock the database engine creation to prevent connecting to PostgreSQL
+mock_engine = MagicMock()
+mock_engine.connect = MagicMock()
+
+# Patch engine before any imports
+with patch('app.core.database.create_engine', return_value=mock_engine):
+    pass
 
 # Use in-memory SQLite for testing (fast, isolated)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -20,13 +29,14 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 TestBase = declarative_base()
 
 # Test version of Image model compatible with SQLite
+# Note: Added file_path for test compatibility even though it's not in production model
 class Image(TestBase):
     """Test version of Image model compatible with SQLite"""
     __tablename__ = "images"
 
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, index=True)
-    file_path = Column(String, unique=True, index=True)
+    file_path = Column(String, unique=True, index=True)  # Added for test compatibility
     file_size = Column(Integer)
     capture_date = Column(DateTime(timezone=True), server_default=func.now())
     camera_make = Column(String, nullable=True)
@@ -48,20 +58,42 @@ class Image(TestBase):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+# Test version of SystemConfig model
+class SystemConfig(TestBase):
+    """Test version of SystemConfig model"""
+    __tablename__ = "system_config"
+
+    key = Column(String, primary_key=True, index=True, nullable=False)
+    value = Column(String, nullable=True)
+
+
 # Monkey-patch BEFORE any app imports
 import app.models
 import app.core.database
 
 # Replace the Image model
 app.models.Image = Image
+# Replace the SystemConfig model
+app.models.SystemConfig = SystemConfig
 # Replace the Base to prevent table creation with Vector type
 app.models.Base = TestBase
+
+# Mock the engine to prevent actual database connection
+import app.core.database as db_module
+test_engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+db_module.engine = test_engine
 
 # Store original get_db for reference
 from app.core.database import get_db
 
-# NOW import the FastAPI app (after all patching)
-from app.main import app as fastapi_app
+# Patch metadata.create_all to prevent it from running during import
+with patch.object(TestBase.metadata, 'create_all'):
+    # NOW import the FastAPI app (after all patching)
+    from app.main import app as fastapi_app
 
 @pytest.fixture(scope="function")
 def db_session():

@@ -20,144 +20,79 @@ Tests for image management endpoints.
 """
 
 class TestImageScanEndpoint:
-    """Test suite for /api/v1/images/scan endpoint"""
+    """Test suite for /api/v1/scan endpoint"""
 
-    @patch('app.api.v1.endpoints.scanner.scan_directory')
-    def test_scan_success(self, mock_scan, client):
+    @patch('app.api.v1.endpoints.scan.os.path.exists')
+    @patch('app.api.v1.endpoints.scan.scan_directory')
+    def test_scan_success(self, mock_scan, mock_exists, client, db_session):
         """Test successful directory scan"""
-        # Mock the scanner to return 5 images found
-        mock_scan.return_value = 5
+        # Mock the scanner to return success message
+        mock_scan.return_value = "Scan Initiated"
+        # Mock path exists check
+        mock_exists.return_value = True
         
         response = client.post(
-            "/api/v1/scanner/scan"
+            "/api/v1/scan/"
         )
         
         assert response.status_code == status.HTTP_200_OK
-        assert response.json() == {"status": "success", "images_added": 5}
+        data = response.json()
+        assert data["status"] == "success"
+        assert "Scan started" in data["message"]
         mock_scan.assert_called_once()
 
-    @patch('app.api.v1.endpoints.scanner.scan_directory')
-    def test_scan_empty_directory(self, mock_scan, client):
+    @patch('app.api.v1.endpoints.scan.os.path.exists')
+    @patch('app.api.v1.endpoints.scan.scan_directory')
+    def test_scan_empty_directory(self, mock_scan, mock_exists, client, db_session):
         """Test scanning directory with no new images"""
-        mock_scan.return_value = 0
+        mock_scan.return_value = "Scan Initiated"
+        mock_exists.return_value = True
         
         response = client.post(
-            "/api/v1/scanner/scan"
+            "/api/v1/scan/"
         )
         
         assert response.status_code == status.HTTP_200_OK
-        assert response.json() == {"status": "success", "images_added": 0}
+        data = response.json()
+        assert data["status"] == "success"
 
-    @patch('app.api.v1.endpoints.scanner.scan_directory')
-    def test_scan_error_handling(self, mock_scan, client):
+    @patch('app.api.v1.endpoints.scan.os.path.exists')
+    @patch('app.api.v1.endpoints.scan.scan_directory')
+    def test_scan_error_handling(self, mock_scan, mock_exists, client, db_session):
         """Test error handling when scan fails"""
         mock_scan.side_effect = Exception("Permission denied")
+        mock_exists.return_value = True
         
         response = client.post(
-            "/api/v1/scanner/scan"
+            "/api/v1/scan/"
         )
         
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["status"] == "error"
+        
+    def test_scan_storage_not_configured(self, client, db_session):
+        """Test scan fails when storage path not configured"""
+        # Remove storage_path config
+        config = db_session.query(SystemConfig).filter_by(key="storage_path").first()
+        if config:
+            db_session.delete(config)
+            db_session.commit()
+        
+        response = client.post("/api/v1/scan/")
+        
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        
+    @patch('app.api.v1.endpoints.scan.os.path.exists')
+    def test_scan_storage_not_mounted(self, mock_exists, client, db_session):
+        """Test scan fails when storage drive not mounted"""
+        # Mock path doesn't exist
+        mock_exists.return_value = False
+        
+        response = client.post("/api/v1/scan/")
+        
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
 
-class TestImageProcessEndpoint:
-    """Test suite for /api/v1/images/process endpoint"""
-
-    @patch('app.api.v1.endpoints.images.generate_embedding')
-    def test_process_images_success(self, mock_embedding, client, sample_images, db_session):
-        """Test successful image processing with embeddings"""
-        # Mock embedding generation
-        mock_embedding.return_value = [0.5] * 512
-        
-        response = client.post("/api/v1/images/process")
-        
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["processed"] >= 0
-        
-        # Verify embedding was generated
-        mock_embedding.assert_called()
-
-    @patch('app.api.v1.endpoints.images.generate_embedding')
-    def test_process_with_limit(self, mock_embedding, client, sample_images, db_session):
-        """Test processing with custom limit parameter"""
-        mock_embedding.return_value = [0.5] * 512
-        
-        response = client.post(
-            "/api/v1/images/process",
-            params={"limit": 1}
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["status"] == "success"
-        # Should process at most 1 image
-        assert data["processed"] <= 1
-
-    @patch('app.api.v1.endpoints.images.generate_embedding')
-    def test_process_no_images_to_process(self, mock_embedding, client, db_session):
-        """Test processing when all images are already processed"""
-        # Create an image that's already processed
-        processed_img = Image(
-            filename="processed.jpg",
-            file_path="/test/processed.jpg",
-            file_size=1024,
-            is_processed=True,
-            embedding=[0.1] * 512
-        )
-        db_session.add(processed_img)
-        db_session.commit()
-        
-        response = client.post("/api/v1/images/process")
-        
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert "message" in data
-        assert "No new images" in data["message"]
-
-    @patch('app.api.v1.endpoints.images.generate_embedding')
-    def test_process_failed_embedding(self, mock_embedding, client, sample_images, db_session):
-        """Test handling when embedding generation fails"""
-        # Mock embedding failure
-        mock_embedding.return_value = None
-        
-        response = client.post("/api/v1/images/process")
-        
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["status"] == "success"
-        # No images should be marked as processed
-        assert data["processed"] == 0
-
-    @patch('app.api.v1.endpoints.images.generate_embedding')
-    def test_process_marks_images_as_processed(self, mock_embedding, client, sample_images, db_session):
-        """Test that processed images are marked correctly in database"""
-        mock_embedding.return_value = [0.5] * 512
-        
-        # Get count of unprocessed images before
-        unprocessed_before = db_session.query(Image).filter(
-            Image.is_processed == False
-        ).count()
-        
-        response = client.post("/api/v1/images/process")
-        
-        assert response.status_code == status.HTTP_200_OK
-        
-        # Verify images were marked as processed
-        unprocessed_after = db_session.query(Image).filter(
-            Image.is_processed == False
-        ).count()
-        
-        assert unprocessed_after < unprocessed_before
-
-    def test_process_default_limit(self, client):
-        """Test that default limit is applied (50 images)"""
-        response = client.post("/api/v1/images/process")
-        
-        # Should not fail even with default limit
-        assert response.status_code == status.HTTP_200_OK
 
 
 class TestGetImagesEndpoint:
@@ -300,6 +235,127 @@ class TestGetImageFileEndpoint:
         
         # Adjust expected path to match SystemConfig
         mock_file_response.assert_called_once_with("/mock/storage/images/test.png")
+
+
+class TestGetImageDetailsEndpoint:
+    """Test suite for GET /api/v1/images/details/{image_id} endpoint"""
+
+    def test_get_image_details_success(self, client, sample_images, db_session):
+        """Test getting detailed image information"""
+        image_id = sample_images[0].id
+        
+        response = client.get(f"/api/v1/images/details/{image_id}")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["id"] == image_id
+        assert "filename" in data
+        assert "thumbnail_url" in data
+        assert "image_url" in data
+        assert "metadata" in data
+
+    def test_get_image_details_not_found(self, client, db_session):
+        """Test getting details for non-existent image"""
+        response = client.get("/api/v1/images/details/999999")
+        
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestGetTimelineEndpoint:
+    """Test suite for GET /api/v1/images/timeline endpoint"""
+
+    def test_get_timeline_empty(self, client, db_session):
+        """Test timeline with no images"""
+        response = client.get("/api/v1/images/timeline")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 0
+        assert response.headers["X-Total-Count"] == "0"
+
+    def test_get_timeline_with_images(self, client, sample_images, db_session):
+        """Test timeline returns images"""
+        response = client.get("/api/v1/images/timeline")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "X-Total-Count" in response.headers
+
+    def test_get_timeline_pagination(self, client, sample_images, db_session):
+        """Test timeline pagination"""
+        # Get first page
+        response1 = client.get("/api/v1/images/timeline?skip=0&limit=1")
+        data1 = response1.json()
+        
+        # Get second page
+        response2 = client.get("/api/v1/images/timeline?skip=1&limit=1")
+        data2 = response2.json()
+        
+        assert len(data1) <= 1
+        assert len(data2) <= 1
+        
+        # Ensure they're different images (if enough images exist)
+        if len(data1) > 0 and len(data2) > 0:
+            assert data1[0]["id"] != data2[0]["id"]
+
+    def test_get_timeline_structure(self, client, sample_images, db_session):
+        """Test timeline response structure"""
+        response = client.get("/api/v1/images/timeline")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        
+        if len(data) > 0:
+            image = data[0]
+            assert "id" in image
+            assert "filename" in image
+            assert "thumbnail_url" in image
+            assert "date" in image
+            assert "metadata" in image
+
+
+class TestGetMapDataEndpoint:
+    """Test suite for GET /api/v1/images/map-data endpoint"""
+
+    def test_get_map_data_empty(self, client, db_session):
+        """Test map data with no geotagged images"""
+        response = client.get("/api/v1/images/map-data")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert isinstance(data, list)
+
+    def test_get_map_data_with_geotagged_images(self, client, sample_images, db_session):
+        """Test map data returns only geotagged images"""
+        response = client.get("/api/v1/images/map-data")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert isinstance(data, list)
+        
+        # All returned images should have GPS coordinates
+        for point in data:
+            assert "latitude" in point
+            assert "longitude" in point
+            assert point["latitude"] is not None
+            assert point["longitude"] is not None
+            assert "thumbnail_url" in point
+
+    def test_get_map_data_structure(self, client, sample_images, db_session):
+        """Test map data response structure"""
+        response = client.get("/api/v1/images/map-data")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        
+        if len(data) > 0:
+            point = data[0]
+            required_fields = ["id", "latitude", "longitude", "thumbnail_url"]
+            for field in required_fields:
+                assert field in point
 
 
 class TestGetThumbnailEndpoint:

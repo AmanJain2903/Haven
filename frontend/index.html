@@ -4,7 +4,34 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>Haven</title>
+    
+    <!-- Prevent flash of white background - runs before React loads -->
+    <script>
+      // Check theme preference immediately
+      const theme = localStorage.getItem('theme');
+      const isDark = theme ? theme === 'dark' : true; // Default to dark
+      
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+    
+    <!-- Initial background colors to prevent flash -->
+    <style>
+      html {
+        background-color: #020617; /* slate-950 */
+      }
+      html:not(.dark) {
+        background-color: #f3f4f6; /* gray-100 */
+      }
+      body {
+        background: linear-gradient(to bottom right, #020617, #1e293b, #020617);
+      }
+      html:not(.dark) body {
+        background: linear-gradient(to bottom right, #f3f4f6, #f9fafb, #e2e8f0);
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

@@ -10,7 +10,7 @@ from app.services.scanner import scan_directory_flat as scan_directory
 
 router = APIRouter()
 
-@router.post("/scan")
+@router.post("/")
 def trigger_scan(db: Session = Depends(get_db)):
     """
     Trigger a background scan of the configured storage path.
