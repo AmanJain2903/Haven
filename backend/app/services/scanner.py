@@ -226,94 +226,87 @@ def scan_directory(directory_path: str, db: Session):
     print(f"Scanning directory: {directory_path}")
 
     count = 0
-    for root, dirs, files in os.walk(directory_path):
-        for file in files:
-            if file.lower().endswith(('.jpg', '.jpeg', '.png', '.heic', '.heif')):
-                file_path = os.path.join(root, file)
-                
-                # Skip if already exists
-                existing = db.query(Image).filter(Image.filename == file).first()
-                if existing:
-                    continue
-
-                ensure_thumbnail(file_path, file)
-
-                width, height = None, None
-                mp = None
-
-                try:
-                    img = PILImage.open(file_path)
-                    
-                    # 1. Get Date
-                    capture_date = None # Default Null
-                    # Try getting the standard Exif object
-                    exif = img.getexif()
-                    if exif:
-                        # 36867 = DateTimeOriginal, 306 = DateTime
-                        date_str = exif.get(36867) or exif.get(306)
-                        if date_str:
-                            try:
-                                capture_date = datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
-                            except:
-                                pass # Keep default if parse fails - Todays date
+    imagesPath = os.path.join(directory_path, "images")
+    for file in os.listdir(imagesPath):
+        file_path = os.path.join(imagesPath, file)
+        # Skip if already exists
+        existing = db.query(Image).filter(Image.filename == file).first()
+        if existing:
+            continue
+        ensure_thumbnail(file_path, file)
+        width, height = None, None
+        mp = None
+        try:
+            img = PILImage.open(file_path)
+            
+            # 1. Get Date
+            capture_date = None # Default Null
+            # Try getting the standard Exif object
+            exif = img.getexif()
+            if exif:
+                # 36867 = DateTimeOriginal, 306 = DateTime
+                date_str = exif.get(36867) or exif.get(306)
+                if date_str:
+                    try:
+                        capture_date = datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
+                    except:
+                        pass # Keep default if parse fails - Todays date
                         
-                    # 2. Get GPS
-                    lat = None
-                    lon = None
-                    city = None
-                    state = None
-                    country = None
-                    geo = get_geotagging(img) # Pass the image object, not just exif
+            # 2. Get GPS
+            lat = None
+            lon = None
+            city = None
+            state = None
+            country = None
+            geo = get_geotagging(img) # Pass the image object, not just exif
+            
+            if geo:
+                if 'GPSLatitude' in geo and 'GPSLongitude' in geo:
+                    lat = get_decimal_from_dms(geo['GPSLatitude'], geo['GPSLatitudeRef'])
+                    lon = get_decimal_from_dms(geo['GPSLongitude'], geo['GPSLongitudeRef'])
                     
-                    if geo:
-                        if 'GPSLatitude' in geo and 'GPSLongitude' in geo:
-                            lat = get_decimal_from_dms(geo['GPSLatitude'], geo['GPSLatitudeRef'])
-                            lon = get_decimal_from_dms(geo['GPSLongitude'], geo['GPSLongitudeRef'])
-                            
-                            # Get human-readable location label
-                            if lat and lon:
-                                location_parts = get_location_parts(lat, lon)
-                                city = location_parts.get('city') if location_parts and location_parts.get('city') else None
-                                state = location_parts.get('state') if location_parts and location_parts.get('state') else None
-                                country = location_parts.get('country') if location_parts and location_parts.get('country') else None
+                    # Get human-readable location label
+                    if lat and lon:
+                        location_parts = get_location_parts(lat, lon)
+                        city = location_parts.get('city') if location_parts and location_parts.get('city') else None
+                        state = location_parts.get('state') if location_parts and location_parts.get('state') else None
+                        country = location_parts.get('country') if location_parts and location_parts.get('country') else None
 
-                    # 3. Extract Dimensions
-                    width, height = img.size
-                    if width and height:
-                        mp = round((width * height) / 1_000_000, 1)
-                    
-                    # 4. Extract EXIF Metadata
-                    exif_data = extract_exif_data(img)
+            # 3. Extract Dimensions
+            width, height = img.size
+            if width and height:
+                mp = round((width * height) / 1_000_000, 1)
+            
+            # 4. Extract EXIF Metadata
+            exif_data = extract_exif_data(img)
+            # 5. Save to DB
+            db_image = Image(
+                filename=file,
+                file_size=os.path.getsize(file_path),
+                capture_date=capture_date,
+                latitude=lat,
+                longitude=lon,
+                city=city,
+                state=state,
+                country=country,
+                width=width,
+                height=height,
+                megapixels=mp,
+                camera_make=exif_data.get("make"),
+                camera_model=exif_data.get("model"),
+                exposure_time=exif_data.get("exposure"),
+                f_number=exif_data.get("f_number"),
+                iso=exif_data.get("iso"),
+                focal_length=exif_data.get("focal_length"),
+                is_processed=False
+            )
+            db.add(db_image)
+            db.commit() # All or nothing principle not follwed here
+            count += 1
+            location_str = f" | Location: {city}, {state}, {country}" if city or state or country else ""
+            print(f"Found: {file} | Date: {capture_date} | GPS: {lat}, {lon}{location_str}")
 
-                    # 5. Save to DB
-                    db_image = Image(
-                        filename=file,
-                        file_path=file_path,
-                        file_size=os.path.getsize(file_path),
-                        capture_date=capture_date,
-                        latitude=lat,
-                        longitude=lon,
-                        city=city,
-                        state=state,
-                        country=country,
-                        width=width,
-                        height=height,
-                        megapixels=mp,
-                        camera_make=exif_data.get("make"),
-                        camera_model=exif_data.get("model"),
-                        exposure_time=exif_data.get("exposure"),
-                        f_number=exif_data.get("f_number"),
-                        iso=exif_data.get("iso"),
-                        focal_length=exif_data.get("focal_length"),
-                        is_processed=False
-                    )
-                    db.add(db_image)
-                    db.commit() # All or nothing principle not follwed here
-                    count += 1
-                    location_str = f" | Location: {city}, {state}, {country}" if city or state or country else ""
-                    print(f"Found: {file} | Date: {capture_date} | GPS: {lat}, {lon}{location_str}")
-
-                except Exception as e:
-                    print(f"Error processing {file}: {e}")
+        except Exception as e:
+            print(f"Error processing {file}: {e}")
 
     return count

@@ -10,7 +10,6 @@ class Image(Base):
     # File Information
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, index=True)
-    file_path = Column(String, unique=True, index=True)
     file_size = Column(Integer)
     capture_date = Column(DateTime(timezone=True), server_default=func.now())
     
@@ -44,3 +43,11 @@ class Image(Base):
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SystemConfig(Base):
+    __tablename__ = "system_config"
+
+    # Key:Value pairs for system-wide settings
+    key = Column(String, primary_key=True, index=True, nullable=False)
+    value = Column(String, nullable=True)

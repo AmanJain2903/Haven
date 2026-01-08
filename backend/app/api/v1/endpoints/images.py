@@ -15,27 +15,20 @@ import io
 import hashlib
 from app.core.config import settings
 
+
 backend_url = settings.HOST_URL
 
 router = APIRouter()
-
-@router.post("/scan")
-def trigger_scan(path: str, db: Session = Depends(get_db)):
-    """
-    Trigger a scan of a specific folder path.
-    Example payload: /scan?path=/Users/aman/Documents/Work/Haven/test_photos
-    """
-    try:
-        count = scan_directory(path, db)
-        return {"status": "success", "images_added": count}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
 @router.post("/process")
 def process_images(limit: int = 50, db: Session = Depends(get_db)):
     """
     Loops through images that don't have embeddings yet and generates them.
     """
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
+
     # 1. Find images where embedding is NULL
     images = db.query(models.Image).filter(models.Image.embedding == None).limit(limit).all()
     
@@ -47,7 +40,7 @@ def process_images(limit: int = 50, db: Session = Depends(get_db)):
     
     for img in images:
         # 2. Generate the Vector
-        vector = generate_embedding(img.file_path)
+        vector = generate_embedding(os.path.join(config.value, 'images', img.filename))
         
         if vector:
             # 3. Save to DB
@@ -70,14 +63,18 @@ def get_images(response: Response,skip: int = 0, limit: int = 100, db: Session =
     response.headers["Expires"] = "0"
 
     images = db.query(models.Image).offset(skip).limit(limit).all()
+
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
     
     # Transform to JSON
     return [
         {
             "id": img.id,
             "filename": img.filename,
-            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
-            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "date": img.capture_date,
             "latitude": img.latitude,
             "longitude": img.longitude,
@@ -111,11 +108,15 @@ def get_image_details(image_id: int, db: Session = Depends(get_db)):
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
     
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
+    
     return {
         "id": img.id,
         "filename": img.filename,
-        "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
-        "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+        "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+        "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for the full image
         "date": img.capture_date,
         "latitude": img.latitude,
         "longitude": img.longitude,
@@ -146,12 +147,17 @@ def get_image_file(image_id: int, db: Session = Depends(get_db)):
     
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
+    
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
+    filePath = os.path.join(config.value, 'images', img.filename)
         
     # Check if it is an HEIC file
-    if img.file_path.lower().endswith(('.heic', '.heif')):
+    if filePath.lower().endswith(('.heic', '.heif')):
         try:
             # 1. Open the HEIC file
-            heif_file = pillow_heif.read_heif(img.file_path)
+            heif_file = pillow_heif.read_heif(filePath)
             image = Image.frombytes(
                 heif_file.mode, 
                 heif_file.size, 
@@ -170,10 +176,10 @@ def get_image_file(image_id: int, db: Session = Depends(get_db)):
         except Exception as e:
             print(f"Error converting HEIC: {e}")
             # Fallback: try sending original if conversion fails
-            return FileResponse(img.file_path)
+            return FileResponse(filePath)
 
     # For standard images (JPG, PNG), just send the file directly
-    return FileResponse(img.file_path)
+    return FileResponse(filePath)
 
 @router.get("/thumbnail/{image_id}")
 def get_thumbnail_file(image_id: int, db: Session = Depends(get_db)):
@@ -183,9 +189,13 @@ def get_thumbnail_file(image_id: int, db: Session = Depends(get_db)):
     img = db.query(models.Image).filter(models.Image.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404)
+    
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
         
     # Construct expected thumbnail path
-    path_hash = hashlib.md5(img.file_path.encode('utf-8')).hexdigest()
+    path_hash = hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()
     thumb_filename = f"thumb_{path_hash}.jpg"
     thumb_path = os.path.join(settings.THUMBNAIL_DIR, thumb_filename)
     
@@ -195,7 +205,7 @@ def get_thumbnail_file(image_id: int, db: Session = Depends(get_db)):
     
     # Fallback: If no thumbnail exists, serve the original
     # This prevents broken images if the scan missed one
-    return FileResponse(img.file_path)
+    return FileResponse(os.path.join(config.value, 'images', img.filename))
 
 @router.get("/timeline", response_model=List[dict])
 def get_timeline(
@@ -221,14 +231,18 @@ def get_timeline(
         desc(models.Image.capture_date),
         desc(models.Image.id) # Secondary sort for stability
     ).offset(skip).limit(limit).all()
+
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
     
     # 2. Return Flat List (Transformation happens on client)
     return [
         {
             "id": img.id,
             "filename": img.filename,
-            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
-            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "date": img.capture_date,
             "latitude": img.latitude,
             "longitude": img.longitude,
@@ -277,8 +291,12 @@ def get_map_data(db: Session = Depends(get_db)):
         models.Image.id,
         models.Image.latitude,
         models.Image.longitude,
-        models.Image.file_path
+        models.Image.filename
     ).all()
+
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
 
     # 3. Format response
     response = []
@@ -287,7 +305,7 @@ def get_map_data(db: Session = Depends(get_db)):
             "id": img.id,
             "latitude": img.latitude,
             "longitude": img.longitude,
-            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
         })
     
     return response

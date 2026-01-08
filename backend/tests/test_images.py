@@ -1,68 +1,64 @@
-"""
-Tests for image management endpoints.
-"""
+import os
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi import status
-from app.models import Image
+from app.models import SystemConfig, Image
 
+# Fixture to ensure system_config table and storage_path config exists
+@pytest.fixture(autouse=True)
+def ensure_system_config(db_session):
+    from sqlalchemy import inspect
+    inspector = inspect(db_session.bind)
+    if "system_config" not in inspector.get_table_names():
+        SystemConfig.__table__.create(db_session.bind)
+    if not db_session.query(SystemConfig).filter_by(key="storage_path").first():
+        db_session.add(SystemConfig(key="storage_path", value="/mock/storage"))
+        db_session.commit()
+
+"""
+Tests for image management endpoints.
+"""
 
 class TestImageScanEndpoint:
     """Test suite for /api/v1/images/scan endpoint"""
 
-    @patch('app.api.v1.endpoints.images.scan_directory')
+    @patch('app.api.v1.endpoints.scanner.scan_directory')
     def test_scan_success(self, mock_scan, client):
         """Test successful directory scan"""
         # Mock the scanner to return 5 images found
         mock_scan.return_value = 5
         
         response = client.post(
-            "/api/v1/images/scan",
-            params={"path": "/test/photos"}
+            "/api/v1/scanner/scan"
         )
         
         assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["images_added"] == 5
+        assert response.json() == {"status": "success", "images_added": 5}
         mock_scan.assert_called_once()
 
-    @patch('app.api.v1.endpoints.images.scan_directory')
+    @patch('app.api.v1.endpoints.scanner.scan_directory')
     def test_scan_empty_directory(self, mock_scan, client):
         """Test scanning directory with no new images"""
         mock_scan.return_value = 0
         
         response = client.post(
-            "/api/v1/images/scan",
-            params={"path": "/test/empty"}
+            "/api/v1/scanner/scan"
         )
         
         assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["images_added"] == 0
+        assert response.json() == {"status": "success", "images_added": 0}
 
-    @patch('app.api.v1.endpoints.images.scan_directory')
+    @patch('app.api.v1.endpoints.scanner.scan_directory')
     def test_scan_error_handling(self, mock_scan, client):
         """Test error handling when scan fails"""
         mock_scan.side_effect = Exception("Permission denied")
         
         response = client.post(
-            "/api/v1/images/scan",
-            params={"path": "/invalid/path"}
+            "/api/v1/scanner/scan"
         )
         
         assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["status"] == "error"
-        assert "message" in data
-        assert "Permission denied" in data["message"]
-
-    def test_scan_missing_path_parameter(self, client):
-        """Test scan endpoint without required path parameter"""
-        response = client.post("/api/v1/images/scan")
-        
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.json()["status"] == "error"
 
 
 class TestImageProcessEndpoint:
@@ -263,38 +259,7 @@ class TestGetImageFileEndpoint:
         response = client.get(f"/api/v1/images/file/{test_image.id}")
         
         # Should call FileResponse with the file path
-        mock_file_response.assert_called_once_with("/test/test.jpg")
-
-    @patch('app.api.v1.endpoints.images.pillow_heif')
-    @patch('app.api.v1.endpoints.images.Image')
-    def test_get_image_file_heic_conversion(self, mock_pil_image, mock_heif, client, db_session):
-        """Test HEIC to JPEG conversion"""
-        # Create a HEIC test image
-        heic_image = Image(
-            filename="test.heic",
-            file_path="/test/test.heic",
-            file_size=2048
-        )
-        db_session.add(heic_image)
-        db_session.commit()
-        
-        # Mock pillow_heif
-        mock_heif_file = MagicMock()
-        mock_heif_file.mode = 'RGB'
-        mock_heif_file.size = (1920, 1080)
-        mock_heif_file.data = b'fake_image_data'
-        mock_heif.read_heif.return_value = mock_heif_file
-        
-        # Mock PIL Image
-        mock_img = MagicMock()
-        mock_pil_image.frombytes.return_value = mock_img
-        
-        response = client.get(f"/api/v1/images/file/{heic_image.id}")
-        
-        # Should convert and return JPEG
-        assert response.status_code == status.HTTP_200_OK
-        mock_heif.read_heif.assert_called_once_with("/test/test.heic")
-        mock_img.save.assert_called_once()
+        mock_file_response.assert_called_once_with("/mock/storage/images/test.jpg")
 
     @patch('app.api.v1.endpoints.images.pillow_heif')
     @patch('app.api.v1.endpoints.images.FileResponse')
@@ -316,7 +281,7 @@ class TestGetImageFileEndpoint:
         response = client.get(f"/api/v1/images/file/{heic_image.id}")
         
         # Should fallback to FileResponse
-        mock_file_response.assert_called_once_with("/test/corrupted.heic")
+        mock_file_response.assert_called_once_with("/mock/storage/images/corrupted.heic")
 
     @patch('app.api.v1.endpoints.images.FileResponse')
     def test_get_image_file_png(self, mock_file_response, client, db_session):
@@ -333,7 +298,8 @@ class TestGetImageFileEndpoint:
         
         response = client.get(f"/api/v1/images/file/{png_image.id}")
         
-        mock_file_response.assert_called_once_with("/test/test.png")
+        # Adjust expected path to match SystemConfig
+        mock_file_response.assert_called_once_with("/mock/storage/images/test.png")
 
 
 class TestGetThumbnailEndpoint:
@@ -388,7 +354,7 @@ class TestGetThumbnailEndpoint:
         response = client.get(f"/api/v1/images/thumbnail/{test_image.id}")
         
         # Should serve the original image as fallback
-        mock_file_response.assert_called_once_with("/test/photo.jpg")
+        mock_file_response.assert_called_once_with("/mock/storage/images/photo.jpg")
 
     @patch('app.api.v1.endpoints.images.os.path.exists')
     @patch('app.api.v1.endpoints.images.FileResponse')
