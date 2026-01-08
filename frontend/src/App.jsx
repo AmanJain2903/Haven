@@ -17,6 +17,8 @@ function App() {
 
   const [totalCount, setTotalCount] = useState(0); 
 
+  const [statusCode, setStatusCode] = useState('');
+
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,6 +73,9 @@ function App() {
 
       } catch (error) {
           console.error("Failed to load photos:", error);
+          if (error.response && error.response.status === 503) {
+            setStatusCode('503');
+          }
       } finally {
           setLoading(false);
       }
@@ -100,8 +105,8 @@ function App() {
     
     try {
       // 2. Fetch First Batch (Page 0)
-      const { photos: results, total } = await api.searchPhotos(query, 0, LIMIT);
-      
+      let response = await api.searchPhotos(query, 0, LIMIT);
+      const { photos: results, total } = response;
       setPhotos(results);
       setTotalCount(total);
       
@@ -113,6 +118,9 @@ function App() {
 
     } catch (e) {
       console.error('Search error:', e);
+      if (e.response && e.response.status === 503) {
+        setStatusCode('503');
+      }
       setPhotos([]);
     } finally {
       setLoading(false);
@@ -133,15 +141,18 @@ function App() {
     try {
       // Manually fetch the first batch (Page 1) to restart the timeline
       // We cannot use loadMorePhotos() here because 'skip' state might not have updated yet
-      const { photos: results, total } = await api.getThumbnails(0, LIMIT);
-      
+      let response = await api.getThumbnails(0, LIMIT);
+      const { photos: results, total } = response;
       setPhotos(results);
       setTotalCount(total);
-      
+
       // Set skip to 500 so the next automatic scroll loads the correct batch
       setSkip(LIMIT); 
     } catch (error) {
       console.error("Failed to reset timeline:", error);
+      if (error.response && error.response.status === 503) {
+        setStatusCode('503');
+      }
     } finally {
       setLoading(false);
       window.scrollTo(0, 0);
@@ -370,7 +381,7 @@ function App() {
       <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
       
       {activeView === 'photos' ? (
-        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} />
+        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} />
       ) : activeView === 'map' ? (
         <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
           <div style={{ height: 'calc(100vh - 16rem)' }}>
@@ -378,7 +389,7 @@ function App() {
           </div>
         </div>
       ) : (
-        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} />
+        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} />
       )}
 
       {/* Vignette Effect */}
