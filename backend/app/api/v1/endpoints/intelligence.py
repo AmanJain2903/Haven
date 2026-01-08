@@ -110,7 +110,12 @@ def search_map_points(
         models.Image.latitude != None,
         models.Image.longitude != None
     ).order_by(
-        models.Image.embedding.cosine_distance(text_vector)
+        case(
+            (models.Image.capture_date != None, 0), # Dates first
+            else_=1 # Nulls last
+        ),
+        desc(models.Image.capture_date),
+        desc(models.Image.id) # Secondary sort for stability
     ).limit(limit).with_entities(
         models.Image.id,
         models.Image.latitude,
@@ -126,7 +131,6 @@ def search_map_points(
             "latitude": img.latitude,
             "longitude": img.longitude,
             "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
-            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
         })
         
     return response

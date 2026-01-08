@@ -38,6 +38,12 @@ export const api = {
     });
     return response.data;
   },
+
+  // Fetch detailed info for a specific image
+    getImageDetails: async (id) => {
+        const response = await axios.get(`${API_URL}/images/details/${id}`);
+        return response.data;
+    },
   
   // Helper to get full image URL
   getImageUrl: (id) => `${API_URL}/images/file/${id}`,
