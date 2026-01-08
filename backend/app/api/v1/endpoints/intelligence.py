@@ -1,4 +1,4 @@
-from fastapi import Depends, APIRouter, Response
+from fastapi import Depends, APIRouter, Response, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, case
 from typing import List
@@ -7,6 +7,7 @@ from app import models
 from app.ml.clip_client import generate_text_embedding
 import hashlib
 from app.core.config import settings
+import os
 
 backend_url = settings.HOST_URL
 
@@ -54,6 +55,10 @@ def search_photos(response: Response, query: str, threshold: float = 0.8, skip: 
         models.Image.embedding.cosine_distance(text_vector) < threshold
     ).order_by(desc(models.Image.capture_date)).offset(skip).limit(limit).all()
 
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
+
     # 3. Format the output
     response = []
     for img, distance in results:
@@ -63,8 +68,8 @@ def search_photos(response: Response, query: str, threshold: float = 0.8, skip: 
         response.append({
             "id": img.id,
             "filename": img.filename,
-            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
-            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for the full image
+            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+            "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "score": f"{score}%",
             "date": img.capture_date,
             "latitude": img.latitude,
@@ -120,8 +125,12 @@ def search_map_points(
         models.Image.id,
         models.Image.latitude,
         models.Image.longitude,
-        models.Image.file_path
+        models.Image.filename
     ).all()
+
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
 
     # 3. Format Lightweight Response
     response = []
@@ -130,7 +139,7 @@ def search_map_points(
             "id": img.id,
             "latitude": img.latitude,
             "longitude": img.longitude,
-            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(img.file_path.encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+            "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
         })
         
     return response

@@ -1,3 +1,13 @@
+import sqlalchemy
+import os
+import pytest
+
+# Fixture to skip vector search tests if not using Postgres/pgvector
+@pytest.fixture(autouse=True)
+def skip_if_not_postgres(db_session):
+    url = str(db_session.bind.url)
+    if not url.startswith("postgresql"):
+        pytest.skip("Vector search tests require PostgreSQL with pgvector.")
 """
 Tests for AI-powered intelligence endpoints (semantic search).
 
@@ -7,7 +17,18 @@ Integration tests with PostgreSQL would be needed for full vector search testing
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi import status
-from app.models import Image
+from app.models import Image, SystemConfig
+
+
+@pytest.fixture(autouse=True)
+def ensure_system_config(db_session):
+    from sqlalchemy import inspect
+    inspector = inspect(db_session.bind)
+    if "system_config" not in inspector.get_table_names():
+        SystemConfig.__table__.create(db_session.bind)
+    if not db_session.query(SystemConfig).filter_by(key="storage_path").first():
+        db_session.add(SystemConfig(key="storage_path", value="/mock/storage"))
+        db_session.commit()
 
 
 class TestSemanticSearchEndpoint:
@@ -47,20 +68,45 @@ class TestSemanticSearchEndpoint:
         data = response.json()
         assert isinstance(data, list)
 
-    @pytest.mark.skip(reason="Requires PostgreSQL with pgvector for vector operations")
     @patch('app.api.v1.endpoints.intelligence.generate_text_embedding')
     def test_search_response_structure(self, mock_text_embedding, client, db_session):
-        """Test that search results have correct structure"""
+        """Test that search results have correct structure and fields"""
         mock_text_embedding.return_value = [0.5] * 512
-        
         response = client.post(
             "/api/v1/intelligence/search",
             params={"query": "beach"}
         )
-        
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert isinstance(data, list)
+        if data:
+            photo = data[0]
+            for field in [
+                "id", "filename", "thumbnail_url", "image_url", "score", "date",
+                "latitude", "longitude", "city", "state", "country",
+                "width", "height", "megapixels", "metadata"
+            ]:
+                assert field in photo
+            for meta_field in [
+                "camera_make", "camera_model", "exposure_time", "f_number", "iso", "focal_length", "size_bytes"
+            ]:
+                assert meta_field in photo["metadata"]
+
+    @patch('app.api.v1.endpoints.intelligence.generate_text_embedding')
+    def test_search_map_response_structure(self, mock_text_embedding, client, db_session):
+        """Test that /search/map returns correct structure and fields"""
+        mock_text_embedding.return_value = [0.5] * 512
+        response = client.post(
+            "/api/v1/intelligence/search/map",
+            params={"query": "beach"}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert isinstance(data, list)
+        if data:
+            point = data[0]
+            for field in ["id", "latitude", "longitude", "thumbnail_url"]:
+                assert field in point
 
     @pytest.mark.skip(reason="Requires PostgreSQL with pgvector for vector operations")
     @patch('app.api.v1.endpoints.intelligence.generate_text_embedding')

@@ -7,6 +7,7 @@ from app.core.config import settings
 from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
 import os
+from app.core.celery_app import celery_app
 
 # models.Base.metadata.drop_all(bind=engine) # <--- DELETE DATA
 models.Base.metadata.create_all(bind=engine)

@@ -18,7 +18,7 @@ export const processTimelineData = (photos, columns = 5) => {
 
   photos.forEach((photo) => {
     const dateObj = photo.date ? parseISO(photo.date) : null;
-    const year = dateObj ? format(dateObj, 'yyyy') : 'Unknown Date';
+    const year = dateObj ? format(dateObj, 'yyyy') : 'Undated'; // e.g., "2023"
     const month = dateObj ? format(dateObj, 'MMMM') : ''; // e.g., "January"
 
     // 1. Detect Year Change
