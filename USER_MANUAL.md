@@ -7,6 +7,19 @@ You will need **4 separate terminal windows** to run the full stack.
 2. For backend commands, ensure your virtual environment is activated:
    - Mac/Linux: `source venv/bin/activate`
    - Windows: `.\venv\Scripts\activate`
+3. Install requirements
+```bash
+   cd backend
+```
+   - Install requirements.txt
+```bash
+   pip install -r requirements
+```
+   - Install engines
+```bash
+   brew bundle
+```
+
 
 ---
 

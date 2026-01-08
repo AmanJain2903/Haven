@@ -5,7 +5,7 @@ import os
 from app.core.database import SessionLocal
 from app.core.config import settings
 from app.models import SystemConfig
-# from app.services.video_processor import process_video_file  <-- Future
+from app.services.video_processor import process_video_file 
 # from app.services.raw_processor import process_raw_file      <-- Future
 
 # Redis Connection for Locking (Same URL as Celery)
@@ -83,11 +83,16 @@ def task_process_image(self, full_path: str, filename: str):
         # Retry in 10s if it fails (e.g. DB locked)
         self.retry(exc=e, countdown=10)
 
-# --- VIDEO WORKER (Placeholder) ---
-@celery_app.task(name="process_video")
-def task_process_video(full_path: str, filename: str):
-    print(f"🎥 [Worker] Video processing not implemented yet: {filename}")
-    return "Skipped"
+# --- VIDEO WORKER ---
+@celery_app.task(bind=True, max_retries=3, name="process_video")
+def task_process_video(self, full_path: str, filename: str):
+    try:
+        print(f"🎥 [Worker] Processing Video: {filename}")
+        process_video_file(full_path, filename)
+        return f"Success: {filename}"
+    except Exception as e:
+        print(f"❌ [Worker] Video Failed: {filename} | {e}")
+        self.retry(exc=e, countdown=20)
 
 # --- RAW WORKER (Placeholder) ---
 @celery_app.task(name="process_raw")
