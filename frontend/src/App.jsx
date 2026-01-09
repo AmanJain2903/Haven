@@ -4,6 +4,7 @@ import { Sun, Moon } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SearchBar from './components/SearchBar';
 import PhotoGrid from './components/PhotoGrid';
+import VideoGrid from './components/VideoGrid';
 import MapView from './components/MapView';
 import { useTheme } from './contexts/ThemeContext';
 
@@ -29,6 +30,14 @@ function App() {
   const [skip, setSkip] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const LIMIT = 500;
+
+  // Video-specific state
+  const [videos, setVideos] = useState([]);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoSkip, setVideoSkip] = useState(0);
+  const [videoHasMore, setVideoHasMore] = useState(true);
+  const [videoTotalCount, setVideoTotalCount] = useState(0);
+  const [videoStatusCode, setVideoStatusCode] = useState('');
 
   // --- UNIFIED LOAD FUNCTION ---
   // We use useCallback to prevent infinite loops when passed to useEffect
@@ -81,13 +90,64 @@ function App() {
       }
   }, [skip, loading, hasMore, searchQuery, totalCount]); // Dependencies
 
-  // --- INITIAL LOAD ---
+  // Load content when view changes (or on initial mount)
+  // This handles:
+  // 1. Initial load (activeView is 'photos' on mount)
+  // 2. View switching (Photos ↔ Videos)
+  // 3. Loading after search/reset when switching views
   useEffect(() => {
-    // Only load if we have 0 photos and we aren't searching
-    if (photos.length === 0 && !searchQuery) {
+    // Load photos if on photos view and array is empty
+    if (activeView === 'photos' && photos.length === 0 && !loading) {
+      if (searchQuery) {
+        // Active search exists, search photos
+        setLoading(true);
+        api.searchPhotos(searchQuery, 0, LIMIT)
+          .then(response => {
+            const { photos: results, total } = response;
+            setPhotos(results);
+            setTotalCount(total);
+            setHasMore(results.length >= LIMIT);
+            setSkip(LIMIT);
+          })
+          .catch(error => {
+            console.error('Photo search error:', error);
+            if (error.response?.status === 503) {
+              setStatusCode('503');
+            }
+          })
+          .finally(() => setLoading(false));
+      } else {
+        // No search, load normal timeline
         loadMorePhotos();
+      }
     }
-  }, []); // Run once on mount
+    
+    // Load videos if on videos view and array is empty
+    if (activeView === 'videos' && videos.length === 0 && !videoLoading) {
+      if (searchQuery) {
+        // Active search exists, search videos
+        setVideoLoading(true);
+        api.searchVideos(searchQuery, 0, LIMIT)
+          .then(response => {
+            const { videos: results, total } = response;
+            setVideos(results);
+            setVideoTotalCount(total);
+            setVideoHasMore(results.length >= LIMIT);
+            setVideoSkip(LIMIT);
+          })
+          .catch(error => {
+            console.error('Video search error:', error);
+            if (error.response?.status === 503) {
+              setVideoStatusCode('503');
+            }
+          })
+          .finally(() => setVideoLoading(false));
+      } else {
+        // No search, load normal timeline
+        loadMoreVideos();
+      }
+    }
+  }, [activeView]); // Only runs when activeView changes (including initial mount)
 
   // Handle Search
   const handleSearch = async (query) => {
@@ -95,70 +155,176 @@ function App() {
       return handleReset();
     }
 
-    // 1. Reset State for a new Search
+    // 1. Set search query
     setSearchQuery(query);
     setSearchInputValue(query);
-    setPhotos([]);     // Clear old photos immediately
-    setSkip(0);        // Reset counter
-    setHasMore(true);  // Re-enable infinite scroll
-    setLoading(true);
     
-    try {
-      // 2. Fetch First Batch (Page 0)
-      let response = await api.searchPhotos(query, 0, LIMIT);
-      const { photos: results, total } = response;
-      setPhotos(results);
-      setTotalCount(total);
+    // 2. Clear BOTH photos and videos (so switching views will trigger search)
+    setPhotos([]);
+    setSkip(0);
+    setHasMore(true);
+    
+    setVideos([]);
+    setVideoSkip(0);
+    setVideoHasMore(true);
+    
+    // 3. Search only for the current active view
+    if (activeView === 'videos') {
+      setVideoLoading(true);
       
-      // 3. Prepare for next batch
-      if (results.length < LIMIT) {
+      try {
+        let response = await api.searchVideos(query, 0, LIMIT);
+        const { videos: results, total } = response;
+        setVideos(results);
+        setVideoTotalCount(total);
+        
+        if (results.length < LIMIT) {
+          setVideoHasMore(false);
+        }
+        setVideoSkip(LIMIT);
+        
+      } catch (e) {
+        console.error('Video search error:', e);
+        if (e.response && e.response.status === 503) {
+          setVideoStatusCode('503');
+        }
+      } finally {
+        setVideoLoading(false);
+        window.scrollTo(0, 0);
+      }
+    } else {
+      // Default to photos
+      setLoading(true);
+      
+      try {
+        let response = await api.searchPhotos(query, 0, LIMIT);
+        const { photos: results, total } = response;
+        setPhotos(results);
+        setTotalCount(total);
+        
+        if (results.length < LIMIT) {
           setHasMore(false);
+        }
+        setSkip(LIMIT);
+        
+      } catch (e) {
+        console.error('Photo search error:', e);
+        if (e.response && e.response.status === 503) {
+          setStatusCode('503');
+        }
+      } finally {
+        setLoading(false);
+        window.scrollTo(0, 0);
       }
-      setSkip(LIMIT); // Next load starts at 500
-
-    } catch (e) {
-      console.error('Search error:', e);
-      if (e.response && e.response.status === 503) {
-        setStatusCode('503');
-      }
-      setPhotos([]);
-    } finally {
-      setLoading(false);
-      window.scrollTo(0, 0);
     }
   };
 
-  // Reset to all photos
+  // Reset to all photos/videos
   const handleReset = async () => {
+    // Clear search query
     setSearchQuery('');
     setSearchInputValue('');
 
-    // Reset Pagination State
-    setHasMore(true); 
-    setSkip(0);    
+    // Reset ALL state (both photos and videos)
+    setPhotos([]);
+    setSkip(0);
+    setHasMore(true);
     setLoading(false);
+    setStatusCode('');
 
-    try {
-      // Manually fetch the first batch (Page 1) to restart the timeline
-      // We cannot use loadMorePhotos() here because 'skip' state might not have updated yet
-      let response = await api.getThumbnails(0, LIMIT);
-      const { photos: results, total } = response;
-      setPhotos(results);
-      setTotalCount(total);
+    setVideos([]);
+    setVideoSkip(0);
+    setVideoHasMore(true);
+    setVideoLoading(false);
+    setVideoStatusCode('');
 
-      // Set skip to 500 so the next automatic scroll loads the correct batch
-      setSkip(LIMIT); 
-    } catch (error) {
-      console.error("Failed to reset timeline:", error);
-      if (error.response && error.response.status === 503) {
-        setStatusCode('503');
+    // Load content ONLY for the active view
+    if (activeView === 'videos') {
+      setVideoLoading(true);
+      try {
+        const response = await api.getVideoThumbnails(0, LIMIT);
+        const { videos: results, total } = response;
+        setVideos(results);
+        setVideoTotalCount(total);
+        setVideoSkip(LIMIT);
+      } catch (error) {
+        console.error("Failed to reset video timeline:", error);
+        if (error.response && error.response.status === 503) {
+          setVideoStatusCode('503');
+        }
+      } finally {
+        setVideoLoading(false);
+        window.scrollTo(0, 0);
       }
-    } finally {
-      setLoading(false);
-      window.scrollTo(0, 0);
+    } else {
+      // Default to photos
+      setLoading(true);
+      try {
+        const response = await api.getThumbnails(0, LIMIT);
+        const { photos: results, total } = response;
+        setPhotos(results);
+        setTotalCount(total);
+        setSkip(LIMIT);
+      } catch (error) {
+        console.error("Failed to reset photo timeline:", error);
+        if (error.response && error.response.status === 503) {
+          setStatusCode('503');
+        }
+      } finally {
+        setLoading(false);
+        window.scrollTo(0, 0);
+      }
     }
   };
 
+  // --- VIDEO LOAD FUNCTION ---
+  const loadMoreVideos = useCallback(async () => {
+    if (videoLoading || !videoHasMore) return;
+
+    setVideoLoading(true);
+    try {
+      let response;
+      console.log(`Loading Videos... Skip: ${videoSkip}, Limit: ${LIMIT}`);
+      
+      // BRANCH LOGIC: Check if we are searching or viewing timeline
+      if (searchQuery) {
+        // Load Search Results
+        response = await api.searchVideos(searchQuery, videoSkip, LIMIT);
+      } else {
+        // Load Normal Timeline
+        response = await api.getVideoThumbnails(videoSkip, LIMIT);
+      }
+      
+      const { videos: newVideos, total } = response;
+
+      // Update total count on first page
+      if (videoSkip === 0) {
+        setVideoTotalCount(total);
+      }
+
+      if (newVideos.length < LIMIT) {
+        setVideoHasMore(false);
+      }
+      
+      // Append new videos to existing ones
+      setVideos(prev => {
+        const existingIds = new Set(prev.map(v => v.id));
+        const uniqueNew = newVideos.filter(v => !existingIds.has(v.id));
+        return [...prev, ...uniqueNew];
+      });
+
+      // Increase skip for next time
+      setVideoSkip(prev => prev + LIMIT);
+
+    } catch (error) {
+      console.error("Failed to load videos:", error);
+      if (error.response && error.response.status === 503) {
+        setVideoStatusCode('503');
+      }
+    } finally {
+      setVideoLoading(false);
+    }
+  }, [videoSkip, videoLoading, videoHasMore, searchQuery]);
 
 
   // Scroll to top on page load
@@ -382,6 +548,8 @@ function App() {
       
       {activeView === 'photos' ? (
         <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} />
+      ) : activeView === 'videos' ? (
+        <VideoGrid videos={videos} loading={videoLoading} searchQuery={searchQuery} onLoadMore={loadMoreVideos} hasMore={videoHasMore} totalCount={videoTotalCount} statusCode={videoStatusCode} />
       ) : activeView === 'map' ? (
         <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
           <div style={{ height: 'calc(100vh - 16rem)' }}>

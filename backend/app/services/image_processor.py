@@ -7,7 +7,7 @@ from PIL.TiffImagePlugin import IFDRational
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import hashlib
-
+from sqlalchemy.exc import IntegrityError
 # Database imports
 from app.core.database import SessionLocal
 from app.models import Image
@@ -19,6 +19,9 @@ from app.ml.clip_client import generate_embedding
 register_heif_opener()
 
 THUMBNAIL_DIR = settings.THUMBNAIL_DIR
+
+# Define extensions for routing
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
 
 # --- HELPER FUNCTIONS ---
 
@@ -134,7 +137,11 @@ def get_location_parts(latitude: float, longitude: float) -> dict:
             return None
         
         address = location.raw['address']
-        parts = {}
+        parts = {
+            'city': None,
+            'state': None,
+            'country': None
+        }
         
         city = address.get('city') or address.get('town') or address.get('village') or address.get('municipality')
         if city: parts['city'] = city
@@ -188,8 +195,19 @@ def process_image_file(full_path: str, filename: str):
     3. Generates AI Embedding (Vector)
     4. Saves to Database
     """
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in IMAGE_EXTS:
+        print(f"❌ Skipping non-image file: {filename}")
+        return
+    
     db = SessionLocal()
     try:
+        # 0. Check if file is already processed
+        existing_image = db.query(Image).filter(Image.filename == filename).first()
+        if existing_image:
+            print(f"✅ Image already processed: {filename}")
+            return
+        
         # 1. Generate Thumbnail
         ensure_thumbnail(full_path, filename)
         
@@ -268,11 +286,15 @@ def process_image_file(full_path: str, filename: str):
             
             is_processed=True
         )
-        db.add(db_image)
-        db.commit()
+        try:
+            db.add(db_image)
+            db.commit()
+            print(f"✅ Processed: {filename} | AI Ready: {'Yes' if vector_embedding else 'No'}")
+        except IntegrityError:
+            # 3. Handle Race Conditions (if two threads process same file at specific millisecond)
+            db.rollback()
+            print(f"Duplicate detected during insert for {filename}")
         
-        location_str = f" | {city}" if city else ""
-        print(f"✅ Processed: {filename} {location_str} | AI Ready: {'Yes' if vector_embedding else 'No'}")
 
     except Exception as e:
         print(f"❌ Error processing {filename}: {e}")

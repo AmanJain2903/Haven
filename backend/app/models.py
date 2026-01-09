@@ -10,7 +10,7 @@ class Image(Base):
 
     # File Information
     id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String, index=True)
+    filename = Column(String, index=True, unique=True)
     file_size = Column(Integer)
     capture_date = Column(DateTime(timezone=True), nullable=True)
     
@@ -57,7 +57,7 @@ class Video(Base):
     __tablename__ = "videos"
 
     id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String, index=True)
+    filename = Column(String, index=True, unique=True)
     file_size = Column(BigInteger)
     capture_date = Column(DateTime(timezone=True), nullable=True)
 

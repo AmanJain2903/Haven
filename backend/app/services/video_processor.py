@@ -12,10 +12,14 @@ from app.ml.clip_client import generate_embedding
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 from geopy.geocoders import Nominatim
 import hashlib
+from sqlalchemy.exc import IntegrityError
 
 # Directory setup
 THUMBNAIL_DIR = settings.VIDEO_THUMBNAIL_DIR
 PREVIEW_DIR = settings.VIDEO_PREVIEW_DIR
+
+# Define extensions for routing
+VIDEO_EXTS = {'.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm', '.mts', '.m2ts', '.3gp', '.3g2', '.wmv', '.flv', '.ogv'}
 
 def ensure_dirs():
     os.makedirs(THUMBNAIL_DIR, exist_ok=True)
@@ -47,7 +51,11 @@ def get_location_parts(latitude: float, longitude: float) -> dict:
             return None
         
         address = location.raw['address']
-        parts = {}
+        parts = {
+            'city': None,
+            'state': None,
+            'country': None
+        }
         
         city = address.get('city') or address.get('town') or address.get('village') or address.get('municipality')
         if city: parts['city'] = city
@@ -117,8 +125,8 @@ def get_video_metadata(file_path):
             "codec": video_stream.get("codec_name"), # Returns None if missing
             "fps": fps,
             "size": safe_int(format_info.get("size")),
-            "make": tags.get("com.apple.quicktime.make") or tags.get("make"),
-            "model": tags.get("com.apple.quicktime.model") or tags.get("model"),
+            "make": tags.get("com.apple.quicktime.make") or tags.get("make") or None,
+            "model": tags.get("com.apple.quicktime.model") or tags.get("model") or None,
             "date": None,
             "lat": None,
             "lon": None
@@ -204,8 +212,19 @@ def process_video_file(full_path: str, filename: str):
     """
     Worker entry point.
     """
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in VIDEO_EXTS:
+        print(f"❌ Skipping non-video file: {filename}")
+        return
+    
     db = SessionLocal()
     try:
+        # 0. Check if file is already processed
+        existing_video = db.query(Video).filter(Video.filename == filename).first()
+        if existing_video:
+            print(f"✅ Video already processed: {filename}")
+            return
+        
         # 1. Extract Metadata
         meta = get_video_metadata(full_path)
         if not meta:
@@ -233,6 +252,8 @@ def process_video_file(full_path: str, filename: str):
         if vectors:
             # Calculate mean across the 0-th axis (average of 4 vectors)
             final_embedding = np.mean(vectors, axis=0).tolist()
+        
+        city, state, country = None, None, None
         
         # Get Location Parts
         if meta['lat'] and meta['lon']:
@@ -268,9 +289,14 @@ def process_video_file(full_path: str, filename: str):
         # if you want to store the hashes. For now, I'll assume they are derived 
         # or you can update the Video model to store `thumbnail_path=thumb_name`.
         
-        db.add(db_video)
-        db.commit()
-        print(f"✅ Processed Video: {filename} | {meta['duration']}s")
+        try:
+            db.add(db_video)
+            db.commit()
+            print(f"✅ Processed Video: {filename}")
+        except IntegrityError:
+            # 3. Handle Race Conditions (if two threads process same file at specific millisecond)
+            db.rollback()
+            print(f"Duplicate detected during insert for {filename}")
 
     except Exception as e:
         print(f"❌ Error processing video {filename}: {e}")
