@@ -2,6 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
+.DS_Store
 
 # C extensions
 *.so
@@ -215,3 +216,16 @@ haven_data/
 
 # venv
 haven_venv/
+
+# Celerybeat schedule
+celerybeat-schedule.*
+celerybeat.pid
+
+# Celerybeat logs
+celerybeat.log
+
+# Celerybeat logs
+celerybeat.log
+
+# Celerybeat logs
+celerybeat.log

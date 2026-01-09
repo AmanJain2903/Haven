@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     def THUMBNAIL_DIR(self):
         return os.path.join(self.APP_DATA_DIR, "thumbnails")
 
+    @property
+    def VIDEO_THUMBNAIL_DIR(self):
+        return os.path.join(self.APP_DATA_DIR, "video_thumbnails")
+
+    @property
+    def VIDEO_PREVIEW_DIR(self):
+        return os.path.join(self.APP_DATA_DIR, "video_previews")
+
     class Config:
         env_file = ".env"
         extra = "ignore" 

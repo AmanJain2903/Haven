@@ -5,7 +5,7 @@ import os
 from app.core.database import SessionLocal
 from app.core.config import settings
 from app.models import SystemConfig
-# from app.services.video_processor import process_video_file  <-- Future
+from app.services.video_processor import process_video_file 
 # from app.services.raw_processor import process_raw_file      <-- Future
 
 # Redis Connection for Locking (Same URL as Celery)
@@ -39,6 +39,30 @@ def sentinel_pulse():
             # Optional: Write status to Redis for UI to see
             redis_client.set("system_status", "disconnected")
             return
+        
+        # IMPORTANT: IMPLEMENT SCAN COMPLETION CHECK
+        pending_raw = redis_client.get("haven_tasks_pending")
+        completed_raw = redis_client.get("haven_tasks_completed")
+
+        if pending_raw and completed_raw:
+            # ✅ Convert bytes to int
+            try:
+                pending = int(pending_raw.decode('utf-8'))
+                completed = int(completed_raw.decode('utf-8'))
+                if completed < pending:
+                    remaining = pending - completed
+                    print(f"🟡 [Sentinel] Processing in progress: {completed}/{pending} tasks done ({remaining} remaining)")
+                    return
+                else:
+                    # All tasks complete, clear counters for next scan
+                    redis_client.delete("haven_tasks_pending")
+                    redis_client.delete("haven_tasks_completed")
+                    print(f"✅ [Sentinel] All tasks completed! Ready for new scan.")
+            except (ValueError, AttributeError):
+                # Invalid data in Redis, clear and proceed
+                redis_client.delete("haven_tasks_pending")
+                redis_client.delete("haven_tasks_completed")
+                
 
         # 3. HavenVault is Connected! Check Lock.
         # We try to acquire a lock. If it exists, it means a scan is currently running.
@@ -68,7 +92,7 @@ def sentinel_pulse():
         db.close()
 
 # --- IMAGE WORKER ---
-@celery_app.task(name="process_image", bind=True, max_retries=3)
+@celery_app.task(name="process_image", bind=True, max_retries=0)
 def task_process_image(self, full_path: str, filename: str):
     """
     Background job to process a single image.
@@ -77,17 +101,25 @@ def task_process_image(self, full_path: str, filename: str):
         print(f"📷 [Worker] Processing Image: {filename}")
         # This calls the logic you already wrote/refactored
         process_image_file(full_path, filename)
+        redis_client.incr("haven_tasks_completed")
         return f"Success: {filename}"
     except Exception as e:
         print(f"❌ [Worker] Failed: {filename} | Error: {e}")
-        # Retry in 10s if it fails (e.g. DB locked)
-        self.retry(exc=e, countdown=10)
+        redis_client.incr("haven_tasks_failed")
+        raise e
 
-# --- VIDEO WORKER (Placeholder) ---
-@celery_app.task(name="process_video")
-def task_process_video(full_path: str, filename: str):
-    print(f"🎥 [Worker] Video processing not implemented yet: {filename}")
-    return "Skipped"
+# --- VIDEO WORKER ---
+@celery_app.task(bind=True, max_retries=0, name="process_video")
+def task_process_video(self, full_path: str, filename: str):
+    try:
+        print(f"🎥 [Worker] Processing Video: {filename}")
+        process_video_file(full_path, filename)
+        redis_client.incr("haven_tasks_completed")
+        return f"Success: {filename}"
+    except Exception as e:
+        print(f"❌ [Worker] Video Failed: {filename} | {e}")
+        redis_client.incr("haven_tasks_failed")
+        raise e
 
 # --- RAW WORKER (Placeholder) ---
 @celery_app.task(name="process_raw")

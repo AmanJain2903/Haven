@@ -1,0 +1,16 @@
+# Core Services
+brew "redis"       # Required for Celery task queue
+
+# Image Format Support (System Libraries)
+brew "webp"        # WebP support for Pillow
+brew "libheif"     # HEIC/HEIF support (used by pillow-heif)
+brew "libavif"     # AVIF support (used by pillow-avif-plugin)
+
+# Video Format Support (System Libraries)
+brew "ffmpeg"      # Required for Video Processing & Thumbnails
+
+# Optional but Recommended
+brew "libmagic"    # Helps detect file types reliably
+
+# Future: Video Processing (Currently not implemented)
+# brew "ffmpeg"    # Uncomment when you implement video processing
