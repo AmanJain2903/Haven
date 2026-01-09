@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     @property
     def VIDEO_PREVIEW_DIR(self):
         return os.path.join(self.APP_DATA_DIR, "video_previews")
+    
+    @property
+    def RAW_THUMBNAIL_DIR(self):
+        return os.path.join(self.APP_DATA_DIR, "raw_thumbnails")
+    
+    @property
+    def RAW_PREVIEW_DIR(self):
+        return os.path.join(self.APP_DATA_DIR, "raw_previews")
 
     class Config:
         env_file = ".env"
