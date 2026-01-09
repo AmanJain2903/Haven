@@ -3,8 +3,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SearchBar from './components/SearchBar';
-import PhotoGrid from './components/PhotoGrid';
+import PhotoGrid from './components/ImageGrid';
 import VideoGrid from './components/VideoGrid';
+import RawImageGrid from './components/RawImageGrid';
 import MapView from './components/MapView';
 import { useTheme } from './contexts/ThemeContext';
 
@@ -20,16 +21,17 @@ function App() {
 
   const [statusCode, setStatusCode] = useState('');
 
+  // 1. Add state for pagination
+  const [skip, setSkip] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const LIMIT = 500;
+
+  // Images-specific state
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInputValue, setSearchInputValue] = useState('');
   const [activeView, setActiveView] = useState('photos');
-
-  // 1. Add state for pagination
-  const [skip, setSkip] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const LIMIT = 500;
 
   // Video-specific state
   const [videos, setVideos] = useState([]);
@@ -38,6 +40,14 @@ function App() {
   const [videoHasMore, setVideoHasMore] = useState(true);
   const [videoTotalCount, setVideoTotalCount] = useState(0);
   const [videoStatusCode, setVideoStatusCode] = useState('');
+
+  // Raw image-specific state
+  const [rawImages, setRawImages] = useState([]);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawSkip, setRawSkip] = useState(0);
+  const [rawHasMore, setRawHasMore] = useState(true);
+  const [rawTotalCount, setRawTotalCount] = useState(0);
+  const [rawStatusCode, setRawStatusCode] = useState('');
 
   // --- UNIFIED LOAD FUNCTION ---
   // We use useCallback to prevent infinite loops when passed to useEffect
@@ -147,6 +157,32 @@ function App() {
         loadMoreVideos();
       }
     }
+    
+    // Load raw images if on raw view and array is empty
+    if (activeView === 'raw' && rawImages.length === 0 && !rawLoading) {
+      if (searchQuery) {
+        // Active search exists, search raw images
+        setRawLoading(true);
+        api.searchRawImages(searchQuery, 0, LIMIT)
+          .then(response => {
+            const { rawImages: results, total } = response;
+            setRawImages(results);
+            setRawTotalCount(total);
+            setRawHasMore(results.length >= LIMIT);
+            setRawSkip(LIMIT);
+          })
+          .catch(error => {
+            console.error('Raw image search error:', error);
+            if (error.response?.status === 503) {
+              setRawStatusCode('503');
+            }
+          })
+          .finally(() => setRawLoading(false));
+      } else {
+        // No search, load normal timeline
+        loadMoreRawImages();
+      }
+    }
   }, [activeView]); // Only runs when activeView changes (including initial mount)
 
   // Handle Search
@@ -159,7 +195,7 @@ function App() {
     setSearchQuery(query);
     setSearchInputValue(query);
     
-    // 2. Clear BOTH photos and videos (so switching views will trigger search)
+    // 2. Clear ALL content (photos, videos, raw images) so switching views will trigger search
     setPhotos([]);
     setSkip(0);
     setHasMore(true);
@@ -168,8 +204,35 @@ function App() {
     setVideoSkip(0);
     setVideoHasMore(true);
     
+    setRawImages([]);
+    setRawSkip(0);
+    setRawHasMore(true);
+    
     // 3. Search only for the current active view
-    if (activeView === 'videos') {
+    if (activeView === 'raw') {
+      setRawLoading(true);
+      
+      try {
+        let response = await api.searchRawImages(query, 0, LIMIT);
+        const { rawImages: results, total } = response;
+        setRawImages(results);
+        setRawTotalCount(total);
+        
+        if (results.length < LIMIT) {
+          setRawHasMore(false);
+        }
+        setRawSkip(LIMIT);
+        
+      } catch (e) {
+        console.error('Raw image search error:', e);
+        if (e.response && e.response.status === 503) {
+          setRawStatusCode('503');
+        }
+      } finally {
+        setRawLoading(false);
+        window.scrollTo(0, 0);
+      }
+    } else if (activeView === 'videos') {
       setVideoLoading(true);
       
       try {
@@ -225,7 +288,7 @@ function App() {
     setSearchQuery('');
     setSearchInputValue('');
 
-    // Reset ALL state (both photos and videos)
+    // Reset ALL state (photos, videos, and raw images)
     setPhotos([]);
     setSkip(0);
     setHasMore(true);
@@ -238,8 +301,31 @@ function App() {
     setVideoLoading(false);
     setVideoStatusCode('');
 
+    setRawImages([]);
+    setRawSkip(0);
+    setRawHasMore(true);
+    setRawLoading(false);
+    setRawStatusCode('');
+
     // Load content ONLY for the active view
-    if (activeView === 'videos') {
+    if (activeView === 'raw') {
+      setRawLoading(true);
+      try {
+        const response = await api.getRawThumbnails(0, LIMIT);
+        const { rawImages: results, total } = response;
+        setRawImages(results);
+        setRawTotalCount(total);
+        setRawSkip(LIMIT);
+      } catch (error) {
+        console.error("Failed to reset raw image timeline:", error);
+        if (error.response && error.response.status === 503) {
+          setRawStatusCode('503');
+        }
+      } finally {
+        setRawLoading(false);
+        window.scrollTo(0, 0);
+      }
+    } else if (activeView === 'videos') {
       setVideoLoading(true);
       try {
         const response = await api.getVideoThumbnails(0, LIMIT);
@@ -325,6 +411,55 @@ function App() {
       setVideoLoading(false);
     }
   }, [videoSkip, videoLoading, videoHasMore, searchQuery]);
+
+  // --- RAW IMAGES LOAD FUNCTION ---
+  const loadMoreRawImages = useCallback(async () => {
+    if (rawLoading || !rawHasMore) return;
+
+    setRawLoading(true);
+    try {
+      let response;
+      console.log(`Loading RAW Images... Skip: ${rawSkip}, Limit: ${LIMIT}`);
+      
+      // BRANCH LOGIC: Check if we are searching or viewing timeline
+      if (searchQuery) {
+        // Load Search Results
+        response = await api.searchRawImages(searchQuery, rawSkip, LIMIT);
+      } else {
+        // Load Normal Timeline
+        response = await api.getRawThumbnails(rawSkip, LIMIT);
+      }
+      
+      const { rawImages: newRawImages, total } = response;
+
+      // Update total count on first page
+      if (rawSkip === 0) {
+        setRawTotalCount(total);
+      }
+
+      if (newRawImages.length < LIMIT) {
+        setRawHasMore(false);
+      }
+      
+      // Append new raw images to existing ones
+      setRawImages(prev => {
+        const existingIds = new Set(prev.map(r => r.id));
+        const uniqueNew = newRawImages.filter(r => !existingIds.has(r.id));
+        return [...prev, ...uniqueNew];
+      });
+
+      // Increase skip for next time
+      setRawSkip(prev => prev + LIMIT);
+
+    } catch (error) {
+      console.error("Failed to load raw images:", error);
+      if (error.response && error.response.status === 503) {
+        setRawStatusCode('503');
+      }
+    } finally {
+      setRawLoading(false);
+    }
+  }, [rawSkip, rawLoading, rawHasMore, searchQuery]);
 
 
   // Scroll to top on page load
@@ -550,6 +685,8 @@ function App() {
         <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} />
       ) : activeView === 'videos' ? (
         <VideoGrid videos={videos} loading={videoLoading} searchQuery={searchQuery} onLoadMore={loadMoreVideos} hasMore={videoHasMore} totalCount={videoTotalCount} statusCode={videoStatusCode} />
+      ) : activeView === 'raw' ? (
+        <RawImageGrid rawImages={rawImages} loading={rawLoading} searchQuery={searchQuery} onLoadMore={loadMoreRawImages} hasMore={rawHasMore} totalCount={rawTotalCount} statusCode={rawStatusCode} />
       ) : activeView === 'map' ? (
         <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
           <div style={{ height: 'calc(100vh - 16rem)' }}>

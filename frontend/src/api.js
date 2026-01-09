@@ -95,29 +95,32 @@ export const api = {
   // ------------------------------------------------------------
   // Fetch all raw images for timeline view
   getRawThumbnails: async (skip=0, limit=500) => {
-    const response = await axios.get(`${API_URL}/raw-images/timeline`, {
+    const response = await axios.get(`${API_URL}/raw_images/timeline`, {
       params: { skip: skip, limit: limit }
     });
-    return response.data;
+    return {
+      rawImages: response.data,
+      total: parseInt(response.headers['x-total-count'] || 0, 10)
+    }
   },
 
   getRawThumbnailFile: async (id) => {
-    const response = await axios.get(`${API_URL}/raw-images/thumbnail/${id}`);
+    const response = await axios.get(`${API_URL}/raw_images/thumbnail/${id}`);
     return response.data;
   },
 
   getRawPreviewFile: async (id) => {
-    const response = await axios.get(`${API_URL}/raw-images/preview/${id}`);
+    const response = await axios.get(`${API_URL}/raw_images/preview/${id}`);
     return response.data;
   },
 
   getRawFile: async (id) => {
-    const response = await axios.get(`${API_URL}/raw-images/file/${id}`);
+    const response = await axios.get(`${API_URL}/raw_images/file/${id}`);
     return response.data;
   },
 
   getRawDetails: async (id) => {
-    const response = await axios.get(`${API_URL}/raw-images/details/${id}`);
+    const response = await axios.get(`${API_URL}/raw_images/details/${id}`);
     return response.data;
   },
   // ------------------------------------------------------------
@@ -191,8 +194,8 @@ export const api = {
   getVideoUrl: (id) => `${API_URL}/videos/file/${id}`,
   getVideoThumbnailUrl: (id) => `${API_URL}/videos/thumbnail/${id}`,
   getVideoPreviewUrl: (id) => `${API_URL}/videos/preview/${id}`,
-  getRawUrl: (id) => `${API_URL}/raw-images/file/${id}`,
-  getRawThumbnailUrl: (id) => `${API_URL}/raw-images/thumbnail/${id}`,
-  getRawPreviewUrl: (id) => `${API_URL}/raw-images/preview/${id}`,
+  getRawUrl: (id) => `${API_URL}/raw_images/file/${id}`,
+  getRawThumbnailUrl: (id) => `${API_URL}/raw_images/thumbnail/${id}`,
+  getRawPreviewUrl: (id) => `${API_URL}/raw_images/preview/${id}`,
   // ------------------------------------------------------------
 };
