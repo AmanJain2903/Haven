@@ -6,7 +6,7 @@ from app.core.database import SessionLocal
 from app.core.config import settings
 from app.models import SystemConfig
 from app.services.video_processor import process_video_file 
-# from app.services.raw_processor import process_raw_file      <-- Future
+from app.services.raw_image_processor import process_raw_file
 
 # Redis Connection for Locking (Same URL as Celery)
 redis_client = redis.from_url(settings.REDIS_URL)
@@ -105,7 +105,7 @@ def task_process_image(self, full_path: str, filename: str):
         return f"Success: {filename}"
     except Exception as e:
         print(f"❌ [Worker] Failed: {filename} | Error: {e}")
-        redis_client.incr("haven_tasks_failed")
+        redis_client.incr("haven_tasks_completed")
         raise e
 
 # --- VIDEO WORKER ---
@@ -118,11 +118,18 @@ def task_process_video(self, full_path: str, filename: str):
         return f"Success: {filename}"
     except Exception as e:
         print(f"❌ [Worker] Video Failed: {filename} | {e}")
-        redis_client.incr("haven_tasks_failed")
+        redis_client.incr("haven_tasks_completed")
         raise e
 
-# --- RAW WORKER (Placeholder) ---
-@celery_app.task(name="process_raw")
-def task_process_raw(full_path: str, filename: str):
-    print(f"🎞️ [Worker] RAW processing not implemented yet: {filename}")
-    return "Skipped"
+# --- RAW WORKER ---
+@celery_app.task(bind=True, max_retries=0, name="process_raw")
+def task_process_raw(self, full_path: str, filename: str):
+    try:
+        print(f"🎞️ [Worker] Processing RAW: {filename}")
+        process_raw_file(full_path, filename)
+        redis_client.incr("haven_tasks_completed")
+        return f"Success: {filename}"
+    except Exception as e:
+        print(f"❌ [Worker] RAW Failed: {filename} | {e}")
+        redis_client.incr("haven_tasks_completed")
+        raise e

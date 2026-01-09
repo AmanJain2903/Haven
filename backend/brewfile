@@ -5,9 +5,14 @@ brew "redis"       # Required for Celery task queue
 brew "webp"        # WebP support for Pillow
 brew "libheif"     # HEIC/HEIF support (used by pillow-heif)
 brew "libavif"     # AVIF support (used by pillow-avif-plugin)
+brew "imagemagick" # Optional: Robust fallback for tricky conversions
 
 # Video Format Support (System Libraries)
 brew "ffmpeg"      # Required for Video Processing & Thumbnails
+
+# RAW Image Support (Recommended for the RAW Processor)
+brew "libraw"      # Underlying library for RAW file handling
+brew "exiftool"    # For metadata extraction
 
 # Optional but Recommended
 brew "libmagic"    # Helps detect file types reliably

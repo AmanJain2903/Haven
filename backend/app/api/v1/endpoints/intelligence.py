@@ -14,7 +14,7 @@ backend_url = settings.HOST_URL
 
 router = APIRouter()
 
-@router.post("/search")
+@router.post("/search/images")
 def search_photos(response: Response, query: str, threshold: float = 0.8, skip: int=0, limit: int=500, db: Session = Depends(get_db)):
     """
     Finds photos based on semantic similarity.
@@ -166,6 +166,89 @@ def search_videos(response: Response, query: str, threshold: float = 0.8, skip: 
                 "fps": vid.fps,
                 "width": vid.width,
                 "height": vid.height,
+            }
+        })
+        
+    return response
+
+@router.post("/search/raw-images")
+def search_raw_images(response: Response, query: str, threshold: float = 0.8, skip: int=0, limit: int=500, db: Session = Depends(get_db)):
+    """
+    Finds raw images based on semantic similarity.
+    
+    threshold: The cutoff for a "match". 
+               0.2 is very strict (exact matches).
+               0.3 is standard.
+               0.4 is loose (conceptual matches).
+    """
+    # FORCE NO CACHE for the API JSON list
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+    # 1. Convert text to vector
+    text_vector = generate_text_embedding(query)
+    
+    if not text_vector:
+        return {"error": "Could not generate embedding"}
+    
+    # Create the base filter (without limit/offset)
+    # We use this to count strictly the matching raw images
+    base_query = db.query(models.RawImage).filter(
+        models.RawImage.embedding.cosine_distance(text_vector) < threshold
+    )
+    
+    # 2. Get Count and set header
+    total_match_count = base_query.count()
+    response.headers["X-Total-Count"] = str(total_match_count)
+
+    # 3. Use Cosine Distance operator (<=>)
+    # We want results where the distance is LOW
+    results = db.query(
+        models.RawImage, 
+        models.RawImage.embedding.cosine_distance(text_vector).label("distance")
+    ).filter(
+        models.RawImage.embedding.cosine_distance(text_vector) < threshold
+    ).order_by(desc(models.RawImage.capture_date)).offset(skip).limit(limit).all()
+
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
+
+    # 4. Format the output
+    response = []
+    for raw, distance in results:
+        # Convert distance to a % score (approximate)
+        score = round((1 - distance) * 100, 2)
+        
+        response.append({
+            "id": raw.id,
+            "filename": raw.filename,
+            "extension": raw.extension,
+            "thumbnail_url": f"{backend_url}/api/v1/raw-images/thumbnail/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",
+            "preview_url": f"{backend_url}/api/v1/raw-images/preview/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",
+            "raw_url": f"{backend_url}/api/v1/raw-images/file/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",
+            "score": f"{score}%",
+            "date": raw.capture_date,
+            "latitude": raw.latitude,
+            "longitude": raw.longitude,
+            "city": raw.city,
+            "state": raw.state,
+            "country": raw.country,
+            "width": raw.width,
+            "height": raw.height,
+            "megapixels": raw.megapixels,
+            "metadata": {
+                "camera_make": raw.camera_make,
+                "camera_model": raw.camera_model,
+                "lens_make": raw.lens_make,
+                "lens_model": raw.lens_model,
+                "exposure_time": raw.exposure_time,
+                "f_number": raw.f_number,
+                "iso": raw.iso,
+                "focal_length": raw.focal_length,
+                "flash_fired": raw.flash_fired,
+                "size_bytes": raw.file_size
             }
         })
         
