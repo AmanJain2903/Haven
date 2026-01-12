@@ -31,11 +31,43 @@ const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos
   const [isHoveringVideo, setIsHoveringVideo] = useState(false);
   const [isHoveringControls, setIsHoveringControls] = useState(false);
   
+  // Debounced media loading
+  const [shouldLoadMedia, setShouldLoadMedia] = useState(false);
+  
   // Determine if bottom controls should be visible
   // Show if: paused OR (playing AND hovering video/controls)
   // Hide if: metadata overlay or more options dropdown is open
   const shouldShowControls = (!isPlaying || isHoveringVideo || isHoveringControls) && !showMetadata && !showMoreOptions;
   
+  // --- DEBOUNCE MEDIA LOADING TO PREVENT QUEUE BUILDUP ---
+  useEffect(() => {
+    if (!video) return;
+
+    // Cancel any in-flight video loads
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.src = '';
+      videoRef.current.load(); // Reset the video element
+    }
+
+    // Reset media loading state immediately on navigation
+    setShouldLoadMedia(false);
+
+    // Delay media loading by 150ms - if user navigates again, this gets cancelled
+    const mediaLoadTimer = setTimeout(() => {
+      setShouldLoadMedia(true);
+    }, 150);
+
+    return () => {
+      clearTimeout(mediaLoadTimer);
+      // Final cleanup: cancel any pending video loads
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.src = '';
+      }
+    };
+  }, [video]);
+
   // Fetch details logic
   useEffect(() => {
     if (!video) return;
@@ -76,12 +108,14 @@ const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos
 
   const handleNext = () => {
     if (hasNext) {
+      setDuration(0);
       onNext();
     }
   };
 
   const handlePrev = () => {
     if (hasPrev) {
+      setDuration(0);
       onPrev();
     }
   };
@@ -294,7 +328,7 @@ const handleSeekEnd = () => {
                 >
                   <video
                     ref={videoRef}
-                    src={api.getVideoUrl(activeVideo.id)}
+                    src={shouldLoadMedia ? api.getVideoUrl(activeVideo.id) : undefined}
                     className="max-h-[80vh] max-w-full rounded-2xl shadow-2xl"
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}
