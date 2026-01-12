@@ -1,5 +1,5 @@
 import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Heart, Share2, Download, Trash2, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock, MoreVertical, Play, Edit, RotateCcw, RotateCw, FolderPlus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../contexts/ThemeContext';
 import { api } from '../api'; // Import your API helper
@@ -21,7 +21,44 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [shouldLoadMedia, setShouldLoadMedia] = useState(false);
   
+  // Refs for cancelling in-flight image loads
+  const thumbnailRef = useRef(null);
+  const fullImageRef = useRef(null);
+  
+  // --- DEBOUNCE MEDIA LOADING TO PREVENT QUEUE BUILDUP ---
+  useEffect(() => {
+    if (!photo) return;
+
+    // Cancel any in-flight image loads by clearing the src
+    if (thumbnailRef.current) {
+      thumbnailRef.current.src = '';
+    }
+    if (fullImageRef.current) {
+      fullImageRef.current.src = '';
+    }
+
+    // Reset media loading state immediately on navigation
+    setShouldLoadMedia(false);
+
+    // Delay media loading by 150ms - if user navigates again, this gets cancelled
+    const mediaLoadTimer = setTimeout(() => {
+      setShouldLoadMedia(true);
+    }, 150);
+
+    return () => {
+      clearTimeout(mediaLoadTimer);
+      // Final cleanup: cancel any pending image loads
+      if (thumbnailRef.current) {
+        thumbnailRef.current.src = '';
+      }
+      if (fullImageRef.current) {
+        fullImageRef.current.src = '';
+      }
+    };
+  }, [photo]);
+
   // --- FETCH DETAILS LOGIC ---
   useEffect(() => {
     if (!photo) return;
@@ -265,6 +302,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                   {/* Thumbnail - shown immediately, constrained */}
                   {!imageLoaded && (
                     <motion.img 
+                      ref={thumbnailRef}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       style={{willChange: 'opacity'}}
@@ -276,17 +314,20 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                   )}
                   
                   {/* Full image - loads in background, can be larger */}
-                  <motion.img 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: imageLoaded ? 1 : 0 }}
-                    transition={{ duration: 0.3 }}
-                    src={activePhoto.image_url} 
-                    alt={activePhoto.filename}
-                    onLoad={() => setImageLoaded(true)}
-                    className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
-                    style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
-                    draggable={false}
-                  />
+                  {shouldLoadMedia && (
+                    <motion.img 
+                      ref={fullImageRef}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: imageLoaded ? 1 : 0 }}
+                      transition={{ duration: 0.3 }}
+                      src={activePhoto.image_url} 
+                      alt={activePhoto.filename}
+                      onLoad={() => setImageLoaded(true)}
+                      className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
+                      style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
+                      draggable={false}
+                    />
+                  )}
                 </motion.div>
               </AnimatePresence>
             </div>
