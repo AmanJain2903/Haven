@@ -346,12 +346,18 @@ export default function PhotoGrid({
       <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-600 dark:text-white/50 text-lg">
-            No photos found in Haven Vault
+            No {searchQuery ? `"${formatSearchQuery(searchQuery)}"` : ""} photos found in Haven Vault
           </p>
 
-          <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
-            Upload some photos to get started!
-          </p>
+          {searchQuery ? (
+            <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
+              Try searching for something else!
+            </p>
+          ) : (
+            <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
+              Upload some photos to get started!
+            </p>
+          )}
         </div>
       </div>
     );

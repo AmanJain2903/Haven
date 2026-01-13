@@ -6,6 +6,7 @@ import SearchBar from './components/SearchBar';
 import PhotoGrid from './components/ImageGrid';
 import VideoGrid from './components/VideoGrid';
 import RawImageGrid from './components/RawImageGrid';
+import AllMediaGrid from './components/AllMediaGrid';
 import MapView from './components/MapView';
 import { useTheme } from './contexts/ThemeContext';
 
@@ -48,6 +49,14 @@ function App() {
   const [rawHasMore, setRawHasMore] = useState(true);
   const [rawTotalCount, setRawTotalCount] = useState(0);
   const [rawStatusCode, setRawStatusCode] = useState('');
+
+  // All media-specific state
+  const [allMedia, setAllMedia] = useState([]);
+  const [allMediaLoading, setAllMediaLoading] = useState(false);
+  const [allMediaSkip, setAllMediaSkip] = useState(0);
+  const [allMediaHasMore, setAllMediaHasMore] = useState(true);
+  const [allMediaTotalCount, setAllMediaTotalCount] = useState(0);
+  const [allMediaStatusCode, setAllMediaStatusCode] = useState('');
 
   // --- UNIFIED LOAD FUNCTION ---
   // We use useCallback to prevent infinite loops when passed to useEffect
@@ -183,6 +192,32 @@ function App() {
         loadMoreRawImages();
       }
     }
+    
+    // Load all media if on all view and array is empty
+    if (activeView === 'all' && allMedia.length === 0 && !allMediaLoading) {
+      if (searchQuery) {
+        // Active search exists, search all media
+        setAllMediaLoading(true);
+        api.searchAllMedia(searchQuery, 0, LIMIT)
+          .then(response => {
+            const { allMedia: results, total } = response;
+            setAllMedia(results);
+            setAllMediaTotalCount(total);
+            setAllMediaHasMore(results.length >= LIMIT);
+            setAllMediaSkip(LIMIT);
+          })
+          .catch(error => {
+            console.error('All media search error:', error);
+            if (error.response?.status === 503) {
+              setAllMediaStatusCode('503');
+            }
+          })
+          .finally(() => setAllMediaLoading(false));
+      } else {
+        // No search, load normal timeline
+        loadMoreAllMedia();
+      }
+    }
   }, [activeView]); // Only runs when activeView changes (including initial mount)
 
   // Handle Search
@@ -208,8 +243,35 @@ function App() {
     setRawSkip(0);
     setRawHasMore(true);
     
+    setAllMedia([]);
+    setAllMediaSkip(0);
+    setAllMediaHasMore(true);
+    
     // 3. Search only for the current active view
-    if (activeView === 'raw') {
+    if (activeView === 'all') {
+      setAllMediaLoading(true);
+      
+      try {
+        let response = await api.searchAllMedia(query, 0, LIMIT);
+        const { allMedia: results, total } = response;
+        setAllMedia(results);
+        setAllMediaTotalCount(total);
+        
+        if (results.length < LIMIT) {
+          setAllMediaHasMore(false);
+        }
+        setAllMediaSkip(LIMIT);
+        
+      } catch (e) {
+        console.error('All media search error:', e);
+        if (e.response && e.response.status === 503) {
+          setAllMediaStatusCode('503');
+        }
+      } finally {
+        setAllMediaLoading(false);
+        window.scrollTo(0, 0);
+      }
+    } else if (activeView === 'raw') {
       setRawLoading(true);
       
       try {
@@ -307,8 +369,31 @@ function App() {
     setRawLoading(false);
     setRawStatusCode('');
 
+    setAllMedia([]);
+    setAllMediaSkip(0);
+    setAllMediaHasMore(true);
+    setAllMediaLoading(false);
+    setAllMediaStatusCode('');
+
     // Load content ONLY for the active view
-    if (activeView === 'raw') {
+    if (activeView === 'all') {
+      setAllMediaLoading(true);
+      try {
+        const response = await api.getAllMediaThumbnails(0, LIMIT);
+        const { allMedia: results, total } = response;
+        setAllMedia(results);
+        setAllMediaTotalCount(total);
+        setAllMediaSkip(LIMIT);
+      } catch (error) {
+        console.error("Failed to reset all media timeline:", error);
+        if (error.response && error.response.status === 503) {
+          setAllMediaStatusCode('503');
+        }
+      } finally {
+        setAllMediaLoading(false);
+        window.scrollTo(0, 0);
+      }
+    } else if (activeView === 'raw') {
       setRawLoading(true);
       try {
         const response = await api.getRawThumbnails(0, LIMIT);
@@ -460,6 +545,55 @@ function App() {
       setRawLoading(false);
     }
   }, [rawSkip, rawLoading, rawHasMore, searchQuery]);
+
+  // --- ALL MEDIA LOAD FUNCTION ---
+  const loadMoreAllMedia = useCallback(async () => {
+    if (allMediaLoading || !allMediaHasMore) return;
+
+    setAllMediaLoading(true);
+    try {
+      let response;
+      console.log(`Loading All Media... Skip: ${allMediaSkip}, Limit: ${LIMIT}`);
+      
+      // BRANCH LOGIC: Check if we are searching or viewing timeline
+      if (searchQuery) {
+        // Load Search Results
+        response = await api.searchAllMedia(searchQuery, allMediaSkip, LIMIT);
+      } else {
+        // Load Normal Timeline
+        response = await api.getAllMediaThumbnails(allMediaSkip, LIMIT);
+      }
+      
+      const { allMedia: newAllMedia, total } = response;
+
+      // Update total count on first page
+      if (allMediaSkip === 0) {
+        setAllMediaTotalCount(total);
+      }
+
+      if (newAllMedia.length < LIMIT) {
+        setAllMediaHasMore(false);
+      }
+      
+      // Append new media to existing ones
+      setAllMedia(prev => {
+        const existingIds = new Set(prev.map(m => `${m.type}-${m.id}`));
+        const uniqueNew = newAllMedia.filter(m => !existingIds.has(`${m.type}-${m.id}`));
+        return [...prev, ...uniqueNew];
+      });
+
+      // Increase skip for next time
+      setAllMediaSkip(prev => prev + LIMIT);
+
+    } catch (error) {
+      console.error("Failed to load all media:", error);
+      if (error.response && error.response.status === 503) {
+        setAllMediaStatusCode('503');
+      }
+    } finally {
+      setAllMediaLoading(false);
+    }
+  }, [allMediaSkip, allMediaLoading, allMediaHasMore, searchQuery]);
 
 
   // Scroll to top on page load
@@ -681,7 +815,9 @@ function App() {
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
       <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
       
-      {activeView === 'photos' ? (
+      {activeView === 'all' ? (
+        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} />
+      ) : activeView === 'photos' ? (
         <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} />
       ) : activeView === 'videos' ? (
         <VideoGrid videos={videos} loading={videoLoading} searchQuery={searchQuery} onLoadMore={loadMoreVideos} hasMore={videoHasMore} totalCount={videoTotalCount} statusCode={videoStatusCode} />
