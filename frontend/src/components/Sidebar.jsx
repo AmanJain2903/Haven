@@ -8,7 +8,7 @@ const navigationItems = [
   { id: 'videos', icon: Video, label: 'Videos' },
   { id: 'raw', icon: Camera, label: 'RAW' },
   { id: 'map', icon: Map, label: 'Map' },
-  { id: 'favourites', icon: Heart, label: 'Favourites' },
+  { id: 'favorites', icon: Heart, label: 'Favorites' },
   { id: 'albums', icon: Album, label: 'Albums' },
   { id: 'smart-albums', icon: Sparkles, label: 'Smart Albums' },
   { id: 'faces', icon: Users, label: 'Faces' },
@@ -21,9 +21,6 @@ export default function Sidebar({ activeView = 'all', setActiveView }) {
   const handleItemClick = (itemId) => {
     if (setActiveView) {
       setActiveView(itemId);
-    }
-    if (itemId === 'photos' && onNavigate) {
-      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     }
   };
 

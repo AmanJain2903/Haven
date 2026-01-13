@@ -1,11 +1,15 @@
-import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Heart, Share2, Download, Trash2, Play, Pause, Volume2, VolumeX, Maximize, Camera, Timer, FileCode, HardDrive, Clock, MoreVertical, Edit, FolderPlus } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Play, Pause, Volume2, VolumeX, Maximize, Camera, Timer, FileCode, HardDrive, Clock, MoreVertical, Edit, FolderPlus } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../contexts/ThemeContext';
 import { api } from '../api';
 import { formatFileSize } from '../utils/fileUtils';
+import FavoriteButton from './FavoriteButton';
+import ShareButton from './ShareButton';
+import DownloadButton from './DownloadButton';
+import DeleteButton from './DeleteButton';
 
-const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos }) => {
+const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos, onFavoriteToggle }) => {
   const { isDark } = useTheme();
   
   const [activeVideo, setActiveVideo] = useState(video);
@@ -635,44 +639,34 @@ const handleSeekEnd = () => {
               <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
 
               {/* Heart Button */}
-              <button
-                onClick={() => {/* TODO: Add favorite functionality */}}
-                className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20
-                         hover:bg-pink-500/30 hover:border-pink-400/50 
-                         transition-all duration-200 group"
-              >
-                <Heart className="w-5 h-5 text-slate-700 dark:text-white/70 group-hover:text-pink-500 dark:group-hover:text-pink-400 transition-colors" />
-              </button>
+              <FavoriteButton 
+                id={activeVideo.id}
+                type="video"
+                initialFavorite={activeVideo.is_favorite}
+                size="large"
+                onToggle={onFavoriteToggle}
+              />
 
               {/* Share Button */}
-              <button
-                onClick={() => {/* TODO: Add share functionality */}}
-                className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20
-                         hover:bg-cyan-500/30 hover:border-cyan-400/50 
-                         transition-all duration-200 group"
-              >
-                <Share2 className="w-5 h-5 text-slate-700 dark:text-white/70 group-hover:text-cyan-500 dark:group-hover:text-cyan-400 transition-colors" />
-              </button>
+              <ShareButton 
+                id={activeVideo.id}
+                type="video"
+                size="large"
+              />
 
               {/* Download Button */}
-              <button
-                onClick={() => {/* TODO: Add download functionality */}}
-                className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20
-                         hover:bg-teal-500/30 hover:border-teal-400/50 
-                         transition-all duration-200 group"
-              >
-                <Download className="w-5 h-5 text-slate-700 dark:text-white/70 group-hover:text-teal-500 dark:group-hover:text-teal-400 transition-colors" />
-              </button>
+              <DownloadButton 
+                id={activeVideo.id}
+                type="video"
+                size="large"
+              />
 
               {/* Delete Button */}
-              <button
-                onClick={() => {/* TODO: Add delete functionality */}}
-                className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20
-                         hover:bg-red-500/30 hover:border-red-400/50 
-                         transition-all duration-200 group"
-              >
-                <Trash2 className="w-5 h-5 text-slate-700 dark:text-white/70 group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors" />
-              </button>
+              <DeleteButton 
+                id={activeVideo.id}
+                type="video"
+                size="large"
+              />
 
               <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
 

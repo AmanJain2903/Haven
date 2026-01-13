@@ -24,7 +24,7 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const MapView = ({searchQuery}) => {
+const MapView = ({searchQuery, onFavoriteToggle}) => {
   const { isDark } = useTheme();
   const [mapPhotos, setMapPhotos] = useState([]); // Store all map points
   const [loading, setLoading] = useState(false);
@@ -343,6 +343,7 @@ const MapView = ({searchQuery}) => {
           onPrev={handlePrev}
           currentIndex={selectedIndex}
           totalPhotos={viewerPhotos.length}
+          onFavoriteToggle={onFavoriteToggle}
         />
       )}
 
@@ -354,6 +355,7 @@ const MapView = ({searchQuery}) => {
           onPrev={handlePrev}
           currentIndex={selectedIndex}
           totalVideos={viewerPhotos.length}
+          onFavoriteToggle={onFavoriteToggle}
         />
       )}
 
@@ -365,6 +367,7 @@ const MapView = ({searchQuery}) => {
           onPrev={handlePrev}
           currentIndex={selectedIndex}
           totalRawImages={viewerPhotos.length}
+          onFavoriteToggle={onFavoriteToggle}
         />
       )}
 
@@ -377,6 +380,7 @@ const MapView = ({searchQuery}) => {
           onPrev={handlePrev}
           currentIndex={selectedIndex}
           totalPhotos={viewerPhotos.length}
+          onFavoriteToggle={onFavoriteToggle}
         />
       )}
     </div>

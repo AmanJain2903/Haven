@@ -467,8 +467,8 @@ ${isHovered ? "opacity-100" : "opacity-0"}
   );
 }
 
-export default function AllMediaGrid({
-  allMedia = [],
+export default function FavoritesGrid({
+  favorites = [],
   loading = false,
   searchQuery = "",
   onLoadMore,
@@ -479,19 +479,59 @@ export default function AllMediaGrid({
 }) {
   const [selectedMedia, setSelectedMedia] = useState(null);
   const virtuosoRef = useRef(null);
+  const previousIndexRef = useRef(null);
 
-  const sortedMedia = useMemo(() => {
-    return [...allMedia].sort((a, b) => {
+  const sortedFavorites = useMemo(() => {
+    return [...favorites].sort((a, b) => {
       const dateA = new Date(a.date || a.capture_date || 0);
       const dateB = new Date(b.date || b.capture_date || 0);
       return dateB - dateA; // Descending (Newest first)
     });
-  }, [allMedia]);
+  }, [favorites]);
 
-  // Process media into timeline rows
-  const timelineRows = useMemo(() => processTimelineData(sortedMedia, 5), [sortedMedia]);
+  // Process favorites into timeline rows
+  const timelineRows = useMemo(() => processTimelineData(sortedFavorites, 5), [sortedFavorites]);
 
-  const getSortedIndex = (media) => sortedMedia.findIndex((m) => m.id === media.id && m.type === media.type);
+  const getSortedIndex = (media) => sortedFavorites.findIndex((m) => m.id === media.id && m.type === media.type);
+
+  // Track the current index whenever selectedMedia changes
+  useEffect(() => {
+    if (selectedMedia) {
+      const currentIdx = getSortedIndex(selectedMedia);
+      if (currentIdx !== -1) {
+        previousIndexRef.current = currentIdx;
+      }
+    }
+  }, [selectedMedia, sortedFavorites]);
+
+  // Handle navigation when current item is removed from favorites
+  useEffect(() => {
+    if (selectedMedia) {
+      const currentIdx = getSortedIndex(selectedMedia);
+      
+      // If current item is no longer in favorites (was unfavorited)
+      if (currentIdx === -1) {
+        const oldIndex = previousIndexRef.current;
+        
+        if (sortedFavorites.length === 0) {
+          // No favorites left, close viewer
+          setSelectedMedia(null);
+        } else if (oldIndex !== null && oldIndex < sortedFavorites.length) {
+          // Try next item (at the same index, which is now the next item)
+          setSelectedMedia(sortedFavorites[oldIndex]);
+        } else if (oldIndex !== null && oldIndex > 0) {
+          // Try previous item
+          setSelectedMedia(sortedFavorites[oldIndex - 1]);
+        } else if (sortedFavorites.length > 0) {
+          // Fallback: go to first item
+          setSelectedMedia(sortedFavorites[0]);
+        } else {
+          // No items left, close viewer
+          setSelectedMedia(null);
+        }
+      }
+    }
+  }, [sortedFavorites, selectedMedia]);
 
   useEffect(() => {
     if (selectedMedia && virtuosoRef.current) {
@@ -519,15 +559,15 @@ export default function AllMediaGrid({
 
   const handleNext = () => {
     const currentIdx = getSortedIndex(selectedMedia);
-    if (currentIdx !== -1 && currentIdx < sortedMedia.length - 1) {
-      setSelectedMedia(sortedMedia[currentIdx + 1]);
+    if (currentIdx !== -1 && currentIdx < sortedFavorites.length - 1) {
+      setSelectedMedia(sortedFavorites[currentIdx + 1]);
     }
   };
 
   const handlePrev = () => {
     const currentIdx = getSortedIndex(selectedMedia);
     if (currentIdx > 0) {
-      setSelectedMedia(sortedMedia[currentIdx - 1]);
+      setSelectedMedia(sortedFavorites[currentIdx - 1]);
     }
   };
 
@@ -553,13 +593,13 @@ export default function AllMediaGrid({
   };
 
   // --- Loading State ---
-  if (loading && allMedia.length === 0) {
+  if (loading && favorites.length === 0) {
     return (
       <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-600/30 dark:border-cyan-400/30 border-t-purple-600 dark:border-t-cyan-400 rounded-full animate-spin mx-auto mb-4" />
           <p className="text-slate-600 dark:text-white/50 text-lg">
-            Loading your media...
+            Loading your loved items...
           </p>
         </div>
       </div>
@@ -583,12 +623,14 @@ export default function AllMediaGrid({
   }
 
   // --- Empty State ---
-  if (!loading && (!allMedia || allMedia.length === 0)) {
+  if (!loading && (!favorites || favorites.length === 0)) {
     return (
       <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-600 dark:text-white/50 text-lg">
-            No {searchQuery ? `"${formatSearchQuery(searchQuery)}"` : ""} media found in Haven Vault
+            {searchQuery 
+              ? `No "${formatSearchQuery(searchQuery)}" found in your loved items`
+              : "No loved items yet"}
           </p>
           {searchQuery ? (
             <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
@@ -596,7 +638,7 @@ export default function AllMediaGrid({
             </p>
           ) : (
             <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
-              Upload some photos, videos, or RAW files to get started!
+              Mark your favorite photos, videos, or RAW files with ♥ to see them here!
             </p>
           )}
         </div>
@@ -622,14 +664,14 @@ dark:from-white dark:via-cyan-100 dark:to-teal-100
 bg-clip-text text-transparent mb-2"
           >
             {searchQuery
-              ? `Searching: "${formatSearchQuery(searchQuery)}" in Your Library`
-              : "Your Library"}
+              ? `Searching: "${formatSearchQuery(searchQuery)}" in Your Loved`
+              : "Your Loved"}
           </h1>
           <p className="text-slate-600 dark:text-white/50 text-lg">
             <span className="font-semibold text-purple-600 dark:text-cyan-400">
               {totalCount}
             </span>{" "}
-            {searchQuery ? "search results" : "items"} in Haven Vault
+            {searchQuery ? "search results" : "loved items"} in Haven Vault
           </p>
         </div>
       </motion.div>
