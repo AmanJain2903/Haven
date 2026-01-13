@@ -656,7 +656,7 @@ dark:from-white dark:via-cyan-100 dark:to-teal-100
 bg-clip-text text-transparent mb-2"
           >
             {searchQuery
-              ? `"${formatSearchQuery(searchQuery)}" in your library`
+              ? `Searching: "${formatSearchQuery(searchQuery)}" in Your Library`
               : "Your Library"}
           </h1>
           <p className="text-slate-600 dark:text-white/50 text-lg">

@@ -4,10 +4,12 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { divIcon } from 'leaflet';
 import { motion } from 'framer-motion';
-import { MapPin } from 'lucide-react';
+import { MapPin, Image, Video, Camera, Files } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useState, useEffect, useMemo } from 'react';
 import ImageViewer from './ImageViewer';
+import VideoViewer from './VideoViewer';
+import RawImageViewer from './RawImageViewer';
 import  { api }  from '../api';
 
 // Fix for default Leaflet markers not showing in React
@@ -29,6 +31,7 @@ const MapView = ({searchQuery}) => {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [viewerPhotos, setViewerPhotos] = useState([]);
+  const [mediaFilter, setMediaFilter] = useState('all'); // 'all', 'photos', 'videos', 'raw'
 
   // 1. Fetch Data
   useEffect(() => {
@@ -36,11 +39,27 @@ const MapView = ({searchQuery}) => {
       setLoading(true);
       try {
         let data = [];
-        if (searchQuery && searchQuery.trim().length > 0) {
-          data = await api.searchMapPoints(searchQuery);
-        } else {
-          data = await api.getAllMapPoints();
+        const hasSearch = searchQuery && searchQuery.trim().length > 0;
+        
+        // Call appropriate API based on filter
+        if (mediaFilter === 'all') {
+          data = hasSearch 
+            ? await api.searchMapPointsAllMedia(searchQuery)
+            : await api.getAllMapPointsAllMedia();
+        } else if (mediaFilter === 'photos') {
+          data = hasSearch 
+            ? await api.searchMapPointsImages(searchQuery)
+            : await api.getAllMapPointsImages();
+        } else if (mediaFilter === 'videos') {
+          data = hasSearch 
+            ? await api.searchMapPointsVideos(searchQuery)
+            : await api.getAllMapPointsVideos();
+        } else if (mediaFilter === 'raw') {
+          data = hasSearch 
+            ? await api.searchMapPointsRawImages(searchQuery)
+            : await api.getAllMapPointsRawImages();
         }
+        
         setMapPhotos(data || []);
       } catch (error) {
         console.error("Failed to load map data", error);
@@ -50,7 +69,7 @@ const MapView = ({searchQuery}) => {
       }
     };
     fetchMapData();
-  }, [searchQuery]);
+  }, [searchQuery, mediaFilter]);
 
   // 2. Compute Valid Photos (Memoized)
   const validPhotos = useMemo(() => {
@@ -65,13 +84,13 @@ const MapView = ({searchQuery}) => {
 
   // 3. Compute Center (Memoized)
   const center = useMemo(() => {
-    if (validPhotos.length === 0) return [20.5937, 78.9629]; 
+    if (validPhotos.length === 0) return [37.7749, -122.4194]; // San Francisco
     try {
         const latSum = validPhotos.reduce((sum, p) => sum + Number(p.latitude), 0);
         const lngSum = validPhotos.reduce((sum, p) => sum + Number(p.longitude), 0);
         return [latSum / validPhotos.length, lngSum / validPhotos.length];
     } catch (e) {
-        return [20.5937, 78.9629]; 
+        return [37.7749, -122.4194]; // San Francisco
     }
   }, [validPhotos]);
 
@@ -168,19 +187,89 @@ const MapView = ({searchQuery}) => {
   };
 
 
+  // Get media type label
+  const getMediaTypeLabel = () => {
+    if (mediaFilter === 'all') return 'items';
+    if (mediaFilter === 'photos') return 'photos';
+    if (mediaFilter === 'videos') return 'videos';
+    if (mediaFilter === 'raw') return 'RAW images';
+    return 'items';
+  };
+
   return (
     <div className="relative">
       {/* Header Stats */}
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 via-indigo-600 to-violet-600 dark:from-white dark:via-cyan-100 dark:to-teal-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
-            {searchQuery ? `Searching: "${searchQuery}"` : "Map View"}
-          </h1>
-          <p className="text-slate-600 dark:text-white/50 text-lg">
-            <span className="font-semibold text-purple-600 dark:text-cyan-400">
-              {validPhotos.length}
-            </span> geotagged photos
-          </p>
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 via-indigo-600 to-violet-600 dark:from-white dark:via-cyan-100 dark:to-teal-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
+              {searchQuery ? `Searching: "${searchQuery}" in` : ""} Haven Atlas
+            </h1>
+            <p className="text-slate-600 dark:text-white/50 text-lg">
+              <span className="font-semibold text-purple-600 dark:text-cyan-400">
+                {validPhotos.length}
+              </span> geotagged {getMediaTypeLabel()} in Haven Vault
+            </p>
+          </div>
+        </div>
+
+        {/* Filter Pills */}
+        <div className="flex items-center gap-3">
+          <motion.button
+            onClick={() => setMediaFilter('all')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'all'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Files className="w-4 h-4" />
+            <span className="text-sm font-medium">All Media</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => setMediaFilter('photos')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'photos'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Image className="w-4 h-4" />
+            <span className="text-sm font-medium">Photos</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => setMediaFilter('videos')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'videos'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Video className="w-4 h-4" />
+            <span className="text-sm font-medium">Videos</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => setMediaFilter('raw')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'raw'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Camera className="w-4 h-4" />
+            <span className="text-sm font-medium">RAW</span>
+          </motion.button>
         </div>
       </div>
 
@@ -245,7 +334,42 @@ const MapView = ({searchQuery}) => {
         </div>
       </div>
 
-      {selectedPhoto && (
+      {/* Render appropriate viewer based on media type */}
+      {selectedPhoto && selectedPhoto.type === 'image' && (
+        <ImageViewer
+          photo={selectedPhoto}
+          onClose={handleClose}
+          onNext={handleNext}
+          onPrev={handlePrev}
+          currentIndex={selectedIndex}
+          totalPhotos={viewerPhotos.length}
+        />
+      )}
+
+      {selectedPhoto && selectedPhoto.type === 'video' && (
+        <VideoViewer
+          video={selectedPhoto}
+          onClose={handleClose}
+          onNext={handleNext}
+          onPrev={handlePrev}
+          currentIndex={selectedIndex}
+          totalVideos={viewerPhotos.length}
+        />
+      )}
+
+      {selectedPhoto && selectedPhoto.type === 'raw' && (
+        <RawImageViewer
+          rawImage={selectedPhoto}
+          onClose={handleClose}
+          onNext={handleNext}
+          onPrev={handlePrev}
+          currentIndex={selectedIndex}
+          totalRawImages={viewerPhotos.length}
+        />
+      )}
+
+      {/* Fallback for photos without type (legacy images) */}
+      {selectedPhoto && !selectedPhoto.type && (
         <ImageViewer
           photo={selectedPhoto}
           onClose={handleClose}

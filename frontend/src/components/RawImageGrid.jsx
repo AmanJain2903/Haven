@@ -360,7 +360,7 @@ dark:from-white dark:via-cyan-100 dark:to-teal-100
 bg-clip-text text-transparent mb-2"
           >
             {searchQuery
-              ? `"${formatSearchQuery(searchQuery)}" in your RAW Images`
+              ? `Searching: "${formatSearchQuery(searchQuery)}" in Your RAW Images`
               : "Your RAW Images"}
           </h1>
 
