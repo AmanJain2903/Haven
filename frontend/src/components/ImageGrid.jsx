@@ -1,7 +1,5 @@
 import { motion } from "framer-motion";
 
-import { Heart, Share2, Download, Trash2 } from "lucide-react";
-
 import { useState, useMemo, useRef, useEffect } from "react";
 
 import { Virtuoso } from "react-virtuoso";
@@ -10,7 +8,12 @@ import { processTimelineData } from "../utils/timelineUtils";
 
 import ImageViewer from "./ImageViewer";
 
-function PhotoCard({ photo, index, onClick }) {
+import FavoriteButton from "./FavoriteButton";
+import ShareButton from "./ShareButton";
+import DownloadButton from "./DownloadButton";
+import DeleteButton from "./DeleteButton";
+
+function PhotoCard({ photo, index, onClick, onFavoriteToggle }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -50,6 +53,19 @@ ${
 
 `}
       >
+        {/* Floating Favorite Button - Top Right (when favorited) */}
+        {photo.is_favorite && (
+          <div className="absolute top-3 right-3 z-10">
+            <FavoriteButton 
+              id={photo.id}
+              type="image"
+              initialFavorite={photo.is_favorite}
+              size="small"
+              onToggle={onFavoriteToggle}
+            />
+          </div>
+        )}
+
         {/* Image */}
 
         <img
@@ -106,67 +122,33 @@ ${isHovered ? "opacity-100" : "opacity-0"}
           {/* Action Buttons */}
 
           <div className="flex items-center gap-2 mt-3">
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
+            <FavoriteButton 
+              id={photo.id}
+              type="image"
+              initialFavorite={photo.is_favorite}
+              size="small"
+              onToggle={onFavoriteToggle}
+            />
 
-hover:bg-pink-500/30 hover:border-pink-400/50
+            <ShareButton 
+              id={photo.id}
+              type="image"
+              size="small"
+            />
 
-transition-all duration-200 group/btn"
-            >
-              <Heart className="w-3 h-3 text-white/70 group-hover/btn:text-pink-400 transition-colors" />
-            </motion.button>
-
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
-
-hover:bg-cyan-500/30 hover:border-cyan-400/50
-
-transition-all duration-200 group/btn"
-            >
-              <Share2 className="w-3 h-3 text-white/70 group-hover/btn:text-cyan-400 transition-colors" />
-            </motion.button>
-
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
-
-hover:bg-teal-500/30 hover:border-teal-400/50
-
-transition-all duration-200 group/btn"
-            >
-              <Download className="w-3 h-3 text-white/70 group-hover/btn:text-teal-400 transition-colors" />
-            </motion.button>
+            <DownloadButton 
+              id={photo.id}
+              type="image"
+              size="small"
+            />
 
             <div className="flex-1" />
 
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
-
-hover:bg-red-500/30 hover:border-red-400/50
-
-transition-all duration-200 group/btn"
-            >
-              <Trash2 className="w-3 h-3 text-white/70 group-hover/btn:text-red-400 transition-colors" />
-            </motion.button>
+            <DeleteButton 
+              id={photo.id}
+              type="image"
+              size="small"
+            />
           </div>
         </motion.div>
 
@@ -213,7 +195,8 @@ export default function PhotoGrid({
   onLoadMore,
   hasMore=true,
   totalCount,
-  statusCode
+  statusCode,
+  onFavoriteToggle
 }) {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
 
@@ -446,6 +429,7 @@ bg-clip-text text-transparent mb-2"
                       photo={photo}
                       index={i}
                       onClick={() => handlePhotoClick(photo)}
+                      onFavoriteToggle={onFavoriteToggle}
                     />
                   </div>
                 ))}
@@ -473,6 +457,7 @@ bg-clip-text text-transparent mb-2"
           onPrev={handlePrev}
           currentIndex={getSortedIndex(selectedPhoto)}
           totalPhotos={totalCount}
+          onFavoriteToggle={onFavoriteToggle}
         />
       )}
     </div>

@@ -35,6 +35,7 @@ def get_raw_images(response: Response, skip: int = 0, limit: int = 100, db: Sess
         {
             "id": raw.id,
             "filename": raw.filename,
+            "is_favorite": raw.is_favorite,
             "extension": raw.extension,
             "thumbnail_url": f"{backend_url}/api/v1/raw_images/thumbnail/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",
             "preview_url": f"{backend_url}/api/v1/raw_images/preview/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",
@@ -81,6 +82,7 @@ def get_raw_image_details(raw_image_id: int, db: Session = Depends(get_db)):
     return {
         "id": raw.id,
         "filename": raw.filename,
+        "is_favorite": raw.is_favorite,
         "extension": raw.extension,
         "thumbnail_url": f"{backend_url}/api/v1/raw_images/thumbnail/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",
         "preview_url": f"{backend_url}/api/v1/raw_images/preview/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",
@@ -221,6 +223,7 @@ def get_raw_timeline(
         {
             "id": raw.id,
             "filename": raw.filename,
+            "is_favorite": raw.is_favorite,
             "extension": raw.extension,
             "thumbnail_url": f"{backend_url}/api/v1/raw_images/thumbnail/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",
             "preview_url": f"{backend_url}/api/v1/raw_images/preview/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}",

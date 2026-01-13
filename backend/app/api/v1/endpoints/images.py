@@ -39,6 +39,7 @@ def get_images(response: Response,skip: int = 0, limit: int = 100, db: Session =
         {
             "id": img.id,
             "filename": img.filename,
+            "is_favorite": img.is_favorite,
             "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
             "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "date": img.capture_date,
@@ -81,6 +82,7 @@ def get_image_details(image_id: int, db: Session = Depends(get_db)):
     return {
         "id": img.id,
         "filename": img.filename,
+        "is_favorite": img.is_favorite,
         "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
         "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for the full image
         "date": img.capture_date,
@@ -207,6 +209,7 @@ def get_timeline(
         {
             "id": img.id,
             "filename": img.filename,
+            "is_favorite": img.is_favorite,
             "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
             "image_url": f"{backend_url}/api/v1/images/file/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for the full image
             "date": img.capture_date,

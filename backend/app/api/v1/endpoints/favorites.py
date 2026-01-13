@@ -71,7 +71,7 @@ ALL_COLUMNS = [
 ]
 
 @router.get("/timeline", response_model=List[dict])
-def get_all_media_timeline(
+def get_favorites_timeline(
     response: Response,
     skip: int = 0, 
     limit: int = 100,
@@ -102,12 +102,11 @@ def get_all_media_timeline(
 
     # --- 2. Build the 3 sub-queries ---
     # Python automatically checks which model has which column and fills gaps with None
-    q_images = build_select(models.Image, "image")
-    q_videos = build_select(models.Video, "video")
-    q_raws   = build_select(models.RawImage, "raw")
+    queryImages = build_select(models.Image, "image").filter(models.Image.is_favorite == True)
+    queryVideos = build_select(models.Video, "video").filter(models.Video.is_favorite == True)
+    queryRawImages = build_select(models.RawImage, "raw").filter(models.RawImage.is_favorite == True)
 
-    # --- 3. Union & Sort ---
-    combined_query = union_all(q_images, q_videos, q_raws).alias("media_union")
+    combined_query = union_all(queryImages, queryVideos, queryRawImages).alias("media_union")
 
     total_count = db.query(combined_query).count()
     response.headers["X-Total-Count"] = str(total_count)
@@ -214,3 +213,17 @@ def get_all_media_timeline(
         }
         for item in output
     ]
+
+@router.post("/toggle/{fileType}/{id}", response_model=int)
+def toggle_favorite(id: int, fileType: str, db: Session = Depends(get_db)):
+    if fileType == "image":
+        media = db.query(models.Image).filter(models.Image.id == id).first()
+    elif fileType == "video":
+        media = db.query(models.Video).filter(models.Video.id == id).first()
+    elif fileType == "raw":
+        media = db.query(models.RawImage).filter(models.RawImage.id == id).first()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    media.is_favorite = not media.is_favorite
+    db.commit()
+    return media.id

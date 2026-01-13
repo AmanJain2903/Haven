@@ -7,6 +7,7 @@ import PhotoGrid from './components/ImageGrid';
 import VideoGrid from './components/VideoGrid';
 import RawImageGrid from './components/RawImageGrid';
 import AllMediaGrid from './components/AllMediaGrid';
+import FavoritesGrid from './components/FavoritesGrid';
 import MapView from './components/MapView';
 import { useTheme } from './contexts/ThemeContext';
 
@@ -60,6 +61,108 @@ function App() {
   const [allMediaHasMore, setAllMediaHasMore] = useState(true);
   const [allMediaTotalCount, setAllMediaTotalCount] = useState(0);
   const [allMediaStatusCode, setAllMediaStatusCode] = useState('');
+
+  // Favorites-specific state
+  const [favorites, setFavorites] = useState([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [favoritesSkip, setFavoritesSkip] = useState(0);
+  const [favoritesHasMore, setFavoritesHasMore] = useState(true);
+  const [favoritesTotalCount, setFavoritesTotalCount] = useState(0);
+  const [favoritesStatusCode, setFavoritesStatusCode] = useState('');
+
+  // Global favorite toggle handler
+  const handleGlobalFavoriteToggle = useCallback(async (id, type, newFavoriteState) => {
+    // Helper function to update is_favorite in an array
+    const updateItemInArray = (items) => {
+      if (!items || !Array.isArray(items)) return items || [];
+      return items.map(item => {
+        // Match by both id and type for mixed arrays (like allMedia, favorites)
+        const itemType = item.type || (type === 'image' ? 'image' : type === 'video' ? 'video' : 'raw');
+        if (item.id === id && itemType === type) {
+          return { ...item, is_favorite: newFavoriteState };
+        }
+        return item;
+      });
+    };
+
+    // Store reference to find the item details
+    let itemToAdd = null;
+
+    // Update all relevant state arrays and find the item being favorited
+    setPhotos(prevPhotos => {
+      const updated = updateItemInArray(prevPhotos);
+      if (newFavoriteState && type === 'image' && !itemToAdd) {
+        itemToAdd = updated.find(item => item.id === id);
+      }
+      return updated;
+    });
+    setVideos(prevVideos => {
+      const updated = updateItemInArray(prevVideos);
+      if (newFavoriteState && type === 'video' && !itemToAdd) {
+        itemToAdd = updated.find(item => item.id === id);
+      }
+      return updated;
+    });
+    setRawImages(prevRaw => {
+      const updated = updateItemInArray(prevRaw);
+      if (newFavoriteState && type === 'raw' && !itemToAdd) {
+        itemToAdd = updated.find(item => item.id === id);
+      }
+      return updated;
+    });
+    setAllMedia(prevAll => {
+      const updated = updateItemInArray(prevAll);
+      if (newFavoriteState && !itemToAdd) {
+        itemToAdd = updated.find(item => {
+          const itemType = item.type || 'image';
+          return item.id === id && itemType === type;
+        });
+      }
+      return updated;
+    });
+
+    // Optimistically update favorites array
+    setFavorites(prevFavs => {
+      const safePrevFavs = prevFavs || [];
+      if (newFavoriteState) {
+        // Item was favorited - check if it already exists in favorites
+        const exists = safePrevFavs.some(item => {
+          const itemType = item.type || 'image';
+          return item.id === id && itemType === type;
+        });
+        
+        if (exists) {
+          // Update existing item
+          return updateItemInArray(safePrevFavs);
+        } else if (itemToAdd) {
+          // Add new item to the beginning of the array (most recent first)
+          return [itemToAdd, ...safePrevFavs];
+        }
+        return safePrevFavs;
+      } else {
+        // Item was unfavorited, remove it from favorites list
+        const itemType = type === 'image' ? 'image' : type === 'video' ? 'video' : 'raw';
+        return safePrevFavs.filter(item => {
+          const favType = item.type || itemType;
+          return !(item.id === id && favType === type);
+        });
+      }
+    });
+
+    // Update count optimistically
+    setFavoritesTotalCount(prev => newFavoriteState ? prev + 1 : Math.max(0, prev - 1));
+
+    // If favoriting, refresh favorites data from backend to get proper thumbnails
+    if (newFavoriteState) {
+      setFavorites([]);
+      setFavoritesLoading(true);
+      setFavoritesSkip(0);
+      setFavoritesHasMore(true);
+      setFavoritesStatusCode('');
+    
+    loadMoreFavorites();
+    }
+  }, [LIMIT]);
 
   // --- UNIFIED LOAD FUNCTION ---
   // We use useCallback to prevent infinite loops when passed to useEffect
@@ -221,6 +324,32 @@ function App() {
         loadMoreAllMedia();
       }
     }
+    
+    // Load favorites if on favorites view and array is empty
+    if (activeView === 'favorites' && favorites.length === 0 && !favoritesLoading) {
+      if (searchQuery) {
+        // Active search exists, search favorites
+        setFavoritesLoading(true);
+        api.searchFavorites(searchQuery, 0, LIMIT)
+          .then(response => {
+            const { favorites: results, total } = response;
+            setFavorites(results);
+            setFavoritesTotalCount(total);
+            setFavoritesHasMore(results.length >= LIMIT);
+            setFavoritesSkip(LIMIT);
+          })
+          .catch(error => {
+            console.error('Favorites search error:', error);
+            if (error.response?.status === 503) {
+              setFavoritesStatusCode('503');
+            }
+          })
+          .finally(() => setFavoritesLoading(false));
+      } else {
+        // No search, load normal timeline
+        loadMoreFavorites();
+      }
+    }
   }, [activeView]); // Only runs when activeView changes (including initial mount)
 
   // Handle Search
@@ -250,6 +379,10 @@ function App() {
     setAllMediaSkip(0);
     setAllMediaHasMore(true);
     
+    setFavorites([]);
+    setFavoritesSkip(0);
+    setFavoritesHasMore(true);
+    
     // 3. Search only for the current active view
     if (activeView === 'all') {
       setAllMediaLoading(true);
@@ -272,6 +405,29 @@ function App() {
         }
       } finally {
         setAllMediaLoading(false);
+        window.scrollTo(0, 0);
+      }
+    } else if (activeView === 'favorites') {
+      setFavoritesLoading(true);
+      
+      try {
+        let response = await api.searchFavorites(query, 0, LIMIT);
+        const { favorites: results, total } = response;
+        setFavorites(results);
+        setFavoritesTotalCount(total);
+        
+        if (results.length < LIMIT) {
+          setFavoritesHasMore(false);
+        }
+        setFavoritesSkip(LIMIT);
+        
+      } catch (e) {
+        console.error('Favorites search error:', e);
+        if (e.response && e.response.status === 503) {
+          setFavoritesStatusCode('503');
+        }
+      } finally {
+        setFavoritesLoading(false);
         window.scrollTo(0, 0);
       }
     } else if (activeView === 'raw') {
@@ -378,6 +534,12 @@ function App() {
     setAllMediaLoading(false);
     setAllMediaStatusCode('');
 
+    setFavorites([]);
+    setFavoritesSkip(0);
+    setFavoritesHasMore(true);
+    setFavoritesLoading(false);
+    setFavoritesStatusCode('');
+
     // Load content ONLY for the active view
     if (activeView === 'all') {
       setAllMediaLoading(true);
@@ -394,6 +556,23 @@ function App() {
         }
       } finally {
         setAllMediaLoading(false);
+        window.scrollTo(0, 0);
+      }
+    } else if (activeView === 'favorites') {
+      setFavoritesLoading(true);
+      try {
+        const response = await api.getAllFavoritesThumbnails(0, LIMIT);
+        const { favorites: results, total } = response;
+        setFavorites(results);
+        setFavoritesTotalCount(total);
+        setFavoritesSkip(LIMIT);
+      } catch (error) {
+        console.error("Failed to reset favorites timeline:", error);
+        if (error.response && error.response.status === 503) {
+          setFavoritesStatusCode('503');
+        }
+      } finally {
+        setFavoritesLoading(false);
         window.scrollTo(0, 0);
       }
     } else if (activeView === 'raw') {
@@ -597,6 +776,55 @@ function App() {
       setAllMediaLoading(false);
     }
   }, [allMediaSkip, allMediaLoading, allMediaHasMore, searchQuery]);
+
+  // --- FAVORITES LOAD FUNCTION ---
+  const loadMoreFavorites = useCallback(async () => {
+    if (favoritesLoading || !favoritesHasMore) return;
+
+    setFavoritesLoading(true);
+    try {
+      let response;
+      console.log(`Loading Favorites... Skip: ${favoritesSkip}, Limit: ${LIMIT}`);
+      
+      // BRANCH LOGIC: Check if we are searching or viewing timeline
+      if (searchQuery) {
+        // Load Search Results
+        response = await api.searchFavorites(searchQuery, favoritesSkip, LIMIT);
+      } else {
+        // Load Normal Timeline
+        response = await api.getAllFavoritesThumbnails(favoritesSkip, LIMIT);
+      }
+      
+      const { favorites: newFavorites, total } = response;
+
+      // Update total count on first page
+      if (favoritesSkip === 0) {
+        setFavoritesTotalCount(total);
+      }
+
+      if (newFavorites.length < LIMIT) {
+        setFavoritesHasMore(false);
+      }
+      
+      // Append new favorites to existing ones
+      setFavorites(prev => {
+        const existingIds = new Set(prev.map(f => `${f.type}-${f.id}`));
+        const uniqueNew = newFavorites.filter(f => !existingIds.has(`${f.type}-${f.id}`));
+        return [...prev, ...uniqueNew];
+      });
+
+      // Increase skip for next time
+      setFavoritesSkip(prev => prev + LIMIT);
+
+    } catch (error) {
+      console.error("Failed to load favorites:", error);
+      if (error.response && error.response.status === 503) {
+        setFavoritesStatusCode('503');
+      }
+    } finally {
+      setFavoritesLoading(false);
+    }
+  }, [favoritesSkip, favoritesLoading, favoritesHasMore, searchQuery]);
 
 
   // Save active view to localStorage whenever it changes
@@ -824,21 +1052,23 @@ function App() {
       <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
       
       {activeView === 'all' ? (
-        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} />
+        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
       ) : activeView === 'photos' ? (
-        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} />
+        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
       ) : activeView === 'videos' ? (
-        <VideoGrid videos={videos} loading={videoLoading} searchQuery={searchQuery} onLoadMore={loadMoreVideos} hasMore={videoHasMore} totalCount={videoTotalCount} statusCode={videoStatusCode} />
+        <VideoGrid videos={videos} loading={videoLoading} searchQuery={searchQuery} onLoadMore={loadMoreVideos} hasMore={videoHasMore} totalCount={videoTotalCount} statusCode={videoStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
       ) : activeView === 'raw' ? (
-        <RawImageGrid rawImages={rawImages} loading={rawLoading} searchQuery={searchQuery} onLoadMore={loadMoreRawImages} hasMore={rawHasMore} totalCount={rawTotalCount} statusCode={rawStatusCode} />
+        <RawImageGrid rawImages={rawImages} loading={rawLoading} searchQuery={searchQuery} onLoadMore={loadMoreRawImages} hasMore={rawHasMore} totalCount={rawTotalCount} statusCode={rawStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
+      ) : activeView === 'favorites' ? (
+        <FavoritesGrid favorites={favorites} loading={favoritesLoading} searchQuery={searchQuery} onLoadMore={loadMoreFavorites} hasMore={favoritesHasMore} totalCount={favoritesTotalCount} statusCode={favoritesStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
       ) : activeView === 'map' ? (
         <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
           <div style={{ height: 'calc(100vh - 16rem)' }}>
-            <MapView searchQuery={searchQuery}/>
+            <MapView searchQuery={searchQuery} onFavoriteToggle={handleGlobalFavoriteToggle} />
           </div>
         </div>
       ) : (
-        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} />
+        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
       )}
 
       {/* Vignette Effect */}

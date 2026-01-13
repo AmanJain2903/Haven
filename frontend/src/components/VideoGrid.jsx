@@ -1,13 +1,17 @@
 import { motion } from "framer-motion";
-import { Heart, Share2, Download, Trash2, Play, Pause } from "lucide-react";
+import { Play, Pause } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { processTimelineData } from "../utils/timelineUtils";
 import VideoViewer from "./VideoViewer";
 import { api } from "../api";
-import formatTime from "../utils/timeUtils";    
+import formatTime from "../utils/timeUtils";
+import FavoriteButton from "./FavoriteButton";
+import ShareButton from "./ShareButton";
+import DownloadButton from "./DownloadButton";
+import DeleteButton from "./DeleteButton";    
 
-function VideoCard({ video, index, onClick }) {
+function VideoCard({ video, index, onClick, onFavoriteToggle }) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewRef = useRef(null);
@@ -78,6 +82,19 @@ ${
 }
 `}
       >
+        {/* Floating Favorite Button - Top Right (when favorited) */}
+        {video.is_favorite && (
+          <div className="absolute top-3 right-3 z-10">
+            <FavoriteButton 
+              id={video.id}
+              type="video"
+              initialFavorite={video.is_favorite}
+              size="small"
+              onToggle={onFavoriteToggle}
+            />
+          </div>
+        )}
+
         {/* Video Thumbnail */}
         <img
           src={api.getVideoThumbnailUrl(video.id)}
@@ -166,59 +183,33 @@ ${isHovered ? "opacity-100" : "opacity-0"}
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 mt-3">
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
-hover:bg-pink-500/30 hover:border-pink-400/50
-transition-all duration-200 group/btn"
-            >
-              <Heart className="w-3 h-3 text-white/70 group-hover/btn:text-pink-400 transition-colors" />
-            </motion.button>
+            <FavoriteButton 
+              id={video.id}
+              type="video"
+              initialFavorite={video.is_favorite}
+              size="small"
+              onToggle={onFavoriteToggle}
+            />
 
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
-hover:bg-cyan-500/30 hover:border-cyan-400/50
-transition-all duration-200 group/btn"
-            >
-              <Share2 className="w-3 h-3 text-white/70 group-hover/btn:text-cyan-400 transition-colors" />
-            </motion.button>
+            <ShareButton 
+              id={video.id}
+              type="video"
+              size="small"
+            />
 
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
-hover:bg-teal-500/30 hover:border-teal-400/50
-transition-all duration-200 group/btn"
-            >
-              <Download className="w-3 h-3 text-white/70 group-hover/btn:text-teal-400 transition-colors" />
-            </motion.button>
+            <DownloadButton 
+              id={video.id}
+              type="video"
+              size="small"
+            />
 
             <div className="flex-1" />
 
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded-full backdrop-blur-xl bg-white/10 border border-white/20
-hover:bg-red-500/30 hover:border-red-400/50
-transition-all duration-200 group/btn"
-            >
-              <Trash2 className="w-3 h-3 text-white/70 group-hover/btn:text-red-400 transition-colors" />
-            </motion.button>
+            <DeleteButton 
+              id={video.id}
+              type="video"
+              size="small"
+            />
           </div>
         </motion.div>
       </div>
@@ -233,7 +224,8 @@ export default function VideoGrid({
   onLoadMore,
   hasMore = true,
   totalCount,
-  statusCode
+  statusCode,
+  onFavoriteToggle
 }) {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const virtuosoRef = useRef(null);
@@ -434,6 +426,7 @@ bg-clip-text text-transparent mb-2"
                       video={video}
                       index={i}
                       onClick={() => handleVideoClick(video)}
+                      onFavoriteToggle={onFavoriteToggle}
                     />
                   </div>
                 ))}
@@ -458,6 +451,7 @@ bg-clip-text text-transparent mb-2"
           onPrev={handlePrev}
           currentIndex={getSortedIndex(selectedVideo)}
           totalVideos={totalCount}
+          onFavoriteToggle={onFavoriteToggle}
         />
       )}
     </div>
