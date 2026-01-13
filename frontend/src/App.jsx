@@ -32,7 +32,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInputValue, setSearchInputValue] = useState('');
-  const [activeView, setActiveView] = useState('photos');
+  const [activeView, setActiveView] = useState(() => {
+    // Restore the last active view from localStorage, default to 'all'
+    return localStorage.getItem('havenActiveView') || 'all';
+  });
 
   // Video-specific state
   const [videos, setVideos] = useState([]);
@@ -596,7 +599,12 @@ function App() {
   }, [allMediaSkip, allMediaLoading, allMediaHasMore, searchQuery]);
 
 
-  // Scroll to top on page load
+  // Save active view to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('havenActiveView', activeView);
+  }, [activeView]);
+
+  // Scroll to top on page load (but preserve the active view)
   useEffect(() => {
     // Disable scroll restoration
     if ('scrollRestoration' in history) {
@@ -830,7 +838,7 @@ function App() {
           </div>
         </div>
       ) : (
-        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} />
+        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} />
       )}
 
       {/* Vignette Effect */}

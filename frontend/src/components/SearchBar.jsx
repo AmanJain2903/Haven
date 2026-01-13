@@ -274,7 +274,7 @@ export default function SearchBar({onSearch, searchValue: externalSearchValue = 
         >
           <div className="text-xs text-slate-600 dark:text-white/50 mb-2 px-2">AI Suggestions</div>
           <div className="flex flex-wrap gap-2">
-            {['Sunset beach', 'Mountain hiking', 'City lights', 'Family photos'].map((tag, i) => (
+            {['Sunset beach', 'Mountain hiking', 'City lights', 'Family photos', 'Gym sessions'].map((tag, i) => (
               <motion.button
                 key={tag}
                 onMouseDown={(e) => {

@@ -656,14 +656,14 @@ dark:from-white dark:via-cyan-100 dark:to-teal-100
 bg-clip-text text-transparent mb-2"
           >
             {searchQuery
-              ? `"${formatSearchQuery(searchQuery)}"`
-              : "All Media"}
+              ? `"${formatSearchQuery(searchQuery)}" in your library`
+              : "Your Library"}
           </h1>
           <p className="text-slate-600 dark:text-white/50 text-lg">
             <span className="font-semibold text-purple-600 dark:text-cyan-400">
               {totalCount}
             </span>{" "}
-            {searchQuery ? "search results" : "items"}
+            {searchQuery ? "search results" : "items"} in Haven Vault
           </p>
         </div>
       </motion.div>

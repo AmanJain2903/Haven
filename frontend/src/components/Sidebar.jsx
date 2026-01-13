@@ -17,7 +17,7 @@ const navigationItems = [
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
-export default function Sidebar({ activeView = 'photos', setActiveView }) {
+export default function Sidebar({ activeView = 'all', setActiveView }) {
   const handleItemClick = (itemId) => {
     if (setActiveView) {
       setActiveView(itemId);
