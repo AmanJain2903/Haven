@@ -185,9 +185,33 @@ export const api = {
     }
   },
 
-  // Search map points
-  searchMapPoints: async (query) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/map`, null, {
+  // Search map points for images
+  searchMapPointsImages: async (query) => {
+    const response = await axios.post(`${API_URL}/intelligence/search/map/images`, null, {
+      params: { query: query }
+    });
+    return response.data;
+  },
+
+  // Search map points for videos
+  searchMapPointsVideos: async (query) => {
+    const response = await axios.post(`${API_URL}/intelligence/search/map/videos`, null, {
+      params: { query: query }
+    });
+    return response.data;
+  },
+
+  // Search map points for raw images
+  searchMapPointsRawImages: async (query) => {
+    const response = await axios.post(`${API_URL}/intelligence/search/map/raw_images`, null, {
+      params: { query: query }
+    });
+    return response.data;
+  },
+
+  // Search map points for all media
+  searchMapPointsAllMedia: async (query) => {
+    const response = await axios.post(`${API_URL}/intelligence/search/map/all_media`, null, {
       params: { query: query }
     });
     return response.data;
@@ -198,15 +222,27 @@ export const api = {
   // Map Search Endpoints
   // ------------------------------------------------------------
   // Search specifically for map points (lightweight, high limit)
-  // Get all map points (lightweight)
-  getAllMapPoints: async () => {
-    const response = await axios.get(`${API_URL}/images/map-data`);
+  // Get all map points for images (lightweight)
+  getAllMapPointsImages: async () => {
+    const response = await axios.get(`${API_URL}/map/images`);
     return response.data;
   },
 
-  // Get all map points (lightweight)
-  getAllVideoMapPoints: async () => {
-    const response = await axios.get(`${API_URL}/videos/map-data`);
+  // Get all map points for videos (lightweight)
+  getAllMapPointsVideos: async () => {
+    const response = await axios.get(`${API_URL}/map/videos`);
+    return response.data;
+  },
+
+  // Get all map points for raw images (lightweight)
+  getAllMapPointsRawImages: async () => {
+    const response = await axios.get(`${API_URL}/map/raw_images`);
+    return response.data;
+  },
+
+  // Get all map points for all media (lightweight)
+  getAllMapPointsAllMedia: async () => {
+    const response = await axios.get(`${API_URL}/map/all_media`);
     return response.data;
   },
   // ------------------------------------------------------------

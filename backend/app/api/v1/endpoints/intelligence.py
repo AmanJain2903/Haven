@@ -470,11 +470,10 @@ def search_all_media(response: Response, query: str, threshold: float = 0.8, ski
     ]
 
 
-@router.post("/search/map", response_model=List[dict])
-def search_map_points(
+@router.post("/search/map/images", response_model=List[dict])
+def search_map_points_images(
     query: str, 
     threshold: float = 0.8,
-    limit: int = 2000, # Higher limit for map (since data is small)
     db: Session = Depends(get_db)
 ):
     """
@@ -498,7 +497,7 @@ def search_map_points(
         ),
         desc(models.Image.capture_date),
         desc(models.Image.id) # Secondary sort for stability
-    ).limit(limit).with_entities(
+    ).with_entities(
         models.Image.id,
         models.Image.latitude,
         models.Image.longitude,
@@ -514,9 +513,202 @@ def search_map_points(
     for img in results:
         response.append({
             "id": img.id,
+            "type": "image",
             "latitude": img.latitude,
             "longitude": img.longitude,
             "thumbnail_url": f"{backend_url}/api/v1/images/thumbnail/{img.id}?h={hashlib.md5(os.path.join(config.value, 'images', img.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
         })
         
+    return response
+
+@router.post("/search/map/videos", response_model=List[dict])
+def search_map_points_videos(
+    query: str, 
+    threshold: float = 0.8,
+    db: Session = Depends(get_db)
+):
+    """
+    Performs Semantic Search but returns ONLY valid GPS points 
+    with minimal data for the Map View.
+    """
+    # 1. Generate Embedding
+    text_vector = generate_text_embedding(query)
+    if not text_vector:
+        return []
+
+    # 2. Query DB: Filter by Similarity + GPS existing
+    results = db.query(models.Video).filter(
+        models.Video.embedding.cosine_distance(text_vector) < threshold,
+        models.Video.latitude != None,
+        models.Video.longitude != None
+    ).order_by(
+        case(
+            (models.Video.capture_date != None, 0), # Dates first
+            else_=1 # Nulls last
+        ),
+        desc(models.Video.capture_date),
+        desc(models.Video.id) # Secondary sort for stability
+    ).with_entities(
+        models.Video.id,
+        models.Video.latitude,
+        models.Video.longitude,
+        models.Video.filename
+    ).all()
+
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
+
+    # 3. Format Lightweight Response
+    response = []
+    for vid in results:
+        response.append({
+            "id": vid.id,
+            "type": "video",
+            "latitude": vid.latitude,
+            "longitude": vid.longitude,
+            "thumbnail_url": f"{backend_url}/api/v1/videos/thumbnail/{vid.id}?h={hashlib.md5(os.path.join(config.value, 'videos', vid.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+        })
+        
+    return response
+
+@router.post("/search/map/raw_images", response_model=List[dict])
+def search_map_points_raw_images(
+    query: str, 
+    threshold: float = 0.8,
+    db: Session = Depends(get_db)
+):
+    """
+    Performs Semantic Search but returns ONLY valid GPS points 
+    with minimal data for the Map View.
+    """
+    # 1. Generate Embedding
+    text_vector = generate_text_embedding(query)
+    if not text_vector:
+        return []
+
+    # 2. Query DB: Filter by Similarity + GPS existing
+    results = db.query(models.RawImage).filter(
+        models.RawImage.embedding.cosine_distance(text_vector) < threshold,
+        models.RawImage.latitude != None,
+        models.RawImage.longitude != None
+    ).order_by(
+        desc(models.RawImage.capture_date),
+        desc(models.RawImage.id) # Secondary sort for stability
+    ).with_entities(
+        models.RawImage.id,
+        models.RawImage.latitude,
+        models.RawImage.longitude,
+        models.RawImage.filename
+    ).all()
+
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
+
+    # 3. Format Lightweight Response
+    response = []
+    for raw in results:
+        response.append({
+            "id": raw.id,
+            "type": "raw",
+            "latitude": raw.latitude,
+            "longitude": raw.longitude,
+            "thumbnail_url": f"{backend_url}/api/v1/raw_images/thumbnail/{raw.id}?h={hashlib.md5(os.path.join(config.value, 'raw', raw.filename).encode('utf-8')).hexdigest()}", # Magic URL for thumbnail
+        })
+        
+    return response
+
+@router.post("/search/map/all_media", response_model=List[dict])
+def search_map_points_all_media(
+    query: str, 
+    threshold: float = 0.8,
+    db: Session = Depends(get_db)
+):
+    """
+    Performs Semantic Search but returns ONLY valid GPS points 
+    with minimal data for the Map View.
+    """
+    # 1. Generate Embedding
+    text_vector = generate_text_embedding(query)
+    if not text_vector:
+        return []
+
+    # --- 1. Helper to build dynamic queries ---
+    def build_select(model, media_type_label):
+        selection = []
+        
+        # selection.append(model.id.label("id")) 
+        # # Already in ALL_COLUMNS list
+        
+        for json_key, attr_name, sql_type in ALL_COLUMNS:
+            if hasattr(model, attr_name):
+                # Column exists in this model (e.g. Image.iso)
+                col = getattr(model, attr_name)
+                selection.append(col.label(json_key))
+            else:
+                # Column missing (e.g. Video.iso) -> Return NULL
+                selection.append(cast(literal(None), sql_type).label(json_key))
+        
+        # Inject the 'type' column manually at the end
+        selection.append(literal(media_type_label).label("type"))
+        
+        return db.query(*selection)
+
+    # --- 2. Build the 3 sub-queries ---
+    # Python automatically checks which model has which column and fills gaps with None
+    q_images = build_select(models.Image, "image")
+    q_videos = build_select(models.Video, "video")
+    q_raws   = build_select(models.RawImage, "raw")
+
+    # --- 3. Union & Sort ---
+    combined_query = union_all(q_images, q_videos, q_raws).alias("media_union")
+
+    # Query DB: Filter by Similarity + GPS existing
+    results = db.query(combined_query).filter(
+        combined_query.c.embedding.cosine_distance(text_vector) < threshold,
+        combined_query.c.latitude != None,
+        combined_query.c.longitude != None
+    ).order_by(
+        desc(combined_query.c.capture_date),
+        desc(combined_query.c.id) # Secondary sort for stability
+    ).with_entities(
+        combined_query.c.id,
+        combined_query.c.latitude,
+        combined_query.c.longitude,
+        combined_query.c.filename,
+        combined_query.c.type
+    ).all()
+
+    config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    if not config or not config.value:
+        raise HTTPException(status_code=503, detail="Storage not configured")
+    
+    base_path = config.value
+
+    # 3. Format Lightweight Response
+    response = []
+    for row in results:
+        if row.type == "image":
+            folder = "images"
+            api_prefix = "images"
+        elif row.type == "video":
+            folder = "videos"
+            api_prefix = "videos"
+        elif row.type == "raw":
+            folder = "raw" 
+            api_prefix = "raw_images"
+
+        # Generate Hash for URLs
+        full_path = os.path.join(base_path, folder, row.filename)
+        path_hash = hashlib.md5(full_path.encode('utf-8')).hexdigest()
+        
+        response.append({
+            "id": row.id,
+            "type": row.type,
+            "latitude": row.latitude,
+            "longitude": row.longitude,
+            "thumbnail_url": f"{backend_url}/api/v1/{api_prefix}/thumbnail/{row.id}?h={path_hash}"
+        })
+
     return response
