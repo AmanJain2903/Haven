@@ -125,6 +125,20 @@ export const api = {
   },
   // ------------------------------------------------------------
 
+  // All Media API ENDPOINTS
+  // ------------------------------------------------------------
+  // Fetch all media for timeline view
+  getAllMediaThumbnails: async (skip=0, limit=500) => {
+    const response = await axios.get(`${API_URL}/all_media/timeline`, {
+      params: { skip: skip, limit: limit }
+    });
+    return {
+      allMedia: response.data,
+      total: parseInt(response.headers['x-total-count'] || 0, 10)
+    }
+  },
+  // ------------------------------------------------------------
+
   // Intelligence API ENDPOINTS
   // ------------------------------------------------------------
   // Search photos
@@ -151,13 +165,24 @@ export const api = {
 
   // Search raw images
   searchRawImages: async (query, skip=0, limit=500) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/raw-images`, null, {
+    const response = await axios.post(`${API_URL}/intelligence/search/raw_images`, null, {
       params: { query: query, skip: skip, limit: limit }
     });
     return {
       rawImages: response.data,
       total: parseInt(response.headers['x-total-count'] || 0, 10)
     } 
+  },
+
+  // Search all media
+  searchAllMedia: async (query, skip=0, limit=500) => {
+    const response = await axios.post(`${API_URL}/intelligence/search/all_media`, null, {
+      params: { query: query, skip: skip, limit: limit }
+    });
+    return {
+      allMedia: response.data,
+      total: parseInt(response.headers['x-total-count'] || 0, 10)
+    }
   },
 
   // Search map points
