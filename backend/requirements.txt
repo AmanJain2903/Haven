@@ -22,3 +22,6 @@ httpx==0.26.0  # Required by TestClient
 rawpy>=0.19.0
 ExifRead>=3.0.0
 PyExifTool==0.5.6
+
+# Database dependencies
+alembic==1.18.0

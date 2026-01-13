@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, text
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 from app.core.database import Base
@@ -52,6 +52,9 @@ class Image(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Favorite
+    is_favorite = Column(Boolean, default=False, server_default=text("FALSE"))
+
 
 class Video(Base):
     __tablename__ = "videos"
@@ -87,6 +90,9 @@ class Video(Base):
     is_processed = Column(Boolean, default=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Favorite
+    is_favorite = Column(Boolean, default=False, server_default=text("FALSE"))
 
 class RawImage(Base):
     __tablename__ = "raw_images"
@@ -131,3 +137,6 @@ class RawImage(Base):
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Favorite
+    is_favorite = Column(Boolean, default=False, server_default=text("FALSE"))
