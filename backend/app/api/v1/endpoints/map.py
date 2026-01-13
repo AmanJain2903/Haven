@@ -32,6 +32,9 @@ ALL_COLUMNS = [
     ("capture_date", "capture_date", DateTime),
     ("width", "width", Integer),
     ("height", "height", Integer),
+
+    # --- Favorite ---
+    ("is_favorite", "is_favorite", Boolean),
     
     # --- Location ---
     ("city", "city", String),

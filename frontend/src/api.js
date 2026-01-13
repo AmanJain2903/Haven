@@ -139,6 +139,25 @@ export const api = {
   },
   // ------------------------------------------------------------
 
+  // Favorites API ENDPOINTS
+  // ------------------------------------------------------------
+  // Fetch all favorites for timeline view
+  getAllFavoritesThumbnails: async (skip=0, limit=500) => {
+    const response = await axios.get(`${API_URL}/favorites/timeline`, {
+      params: { skip: skip, limit: limit }
+    });
+    return {
+      favorites: response.data,
+      total: parseInt(response.headers['x-total-count'] || 0, 10)
+    }
+  },
+
+  toggleFavorite: async (id, fileType) => {
+    const response = await axios.post(`${API_URL}/favorites/toggle/${fileType}/${id}`);
+    return response.data;
+  },
+  // ------------------------------------------------------------
+
   // Intelligence API ENDPOINTS
   // ------------------------------------------------------------
   // Search photos
@@ -181,6 +200,17 @@ export const api = {
     });
     return {
       allMedia: response.data,
+      total: parseInt(response.headers['x-total-count'] || 0, 10)
+    }
+  },
+
+  // Search favorites
+  searchFavorites: async (query, skip=0, limit=500) => {
+    const response = await axios.post(`${API_URL}/intelligence/search/favorites`, null, {
+      params: { query: query, skip: skip, limit: limit }
+    });
+    return {
+      favorites: response.data,
       total: parseInt(response.headers['x-total-count'] || 0, 10)
     }
   },
