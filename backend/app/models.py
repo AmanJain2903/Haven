@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 from app.core.database import Base
@@ -55,6 +56,9 @@ class Image(Base):
     # Favorite
     is_favorite = Column(Boolean, default=False, server_default=text("FALSE"))
 
+    # Album Information
+    album_ids = Column(ARRAY(Integer), nullable=True, server_default=text("'{}'::integer[]")) # Array of album IDs 
+
 
 class Video(Base):
     __tablename__ = "videos"
@@ -93,6 +97,9 @@ class Video(Base):
 
     # Favorite
     is_favorite = Column(Boolean, default=False, server_default=text("FALSE"))
+
+    # Album Information
+    album_ids = Column(ARRAY(Integer), nullable=True, server_default=text("'{}'::integer[]")) # Array of album IDs 
 
 class RawImage(Base):
     __tablename__ = "raw_images"
@@ -140,3 +147,39 @@ class RawImage(Base):
 
     # Favorite
     is_favorite = Column(Boolean, default=False, server_default=text("FALSE"))
+
+    # Album Information
+    album_ids = Column(ARRAY(Integer), nullable=True, server_default=text("'{}'::integer[]")) # Array of album IDs 
+
+class Albums(Base):
+    __tablename__ = "albums"
+
+    # Album Information
+    id = Column(Integer, primary_key=True, index=True)
+    album_name = Column(String, index=True, unique=True)
+    album_size = Column(BigInteger, nullable=True)
+
+    # Album Cover Information
+    album_cover_type = Column(String, nullable=True)
+    album_cover_id = Column(Integer, nullable=True)
+
+    # Album Content Counts
+    album_images_count = Column(Integer, nullable=True)
+    album_videos_count = Column(Integer, nullable=True)
+    album_raw_images_count = Column(Integer, nullable=True)
+    album_total_count = Column(Integer, nullable=True)
+
+    # Album Location
+    album_location = Column(String, nullable=True)
+    album_latitude = Column(Float, nullable=True)
+    album_longitude = Column(Float, nullable=True)
+    album_city = Column(String, nullable=True)
+    album_state = Column(String, nullable=True)
+    album_country = Column(String, nullable=True)
+
+    # Album Description
+    album_description = Column(String, nullable=True)
+
+    # Album Timestamps
+    album_created_at = Column(DateTime(timezone=True), server_default=func.now())
+    album_updated_at = Column(DateTime(timezone=True), server_default=func.now())

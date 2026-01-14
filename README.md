@@ -55,9 +55,9 @@ graph TD
         AI -->|Save Embeddings| VectorDB
         Worker -->|Read/Write| Storage[Local SSD/HDD]
     end
+```
 
 ## License
-
 This project is source-available and intended for educational and research use.
 Commercial use is prohibited without explicit permission from the author.
 See the LICENSE file for full details.
