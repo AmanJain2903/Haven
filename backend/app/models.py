@@ -169,6 +169,11 @@ class Albums(Base):
     album_raw_images_count = Column(Integer, nullable=True)
     album_total_count = Column(Integer, nullable=True)
 
+    # Album Content IDs
+    album_images_ids = Column(ARRAY(Integer), nullable=True, server_default=text("'{}'::integer[]")) # Array of image IDs
+    album_videos_ids = Column(ARRAY(Integer), nullable=True, server_default=text("'{}'::integer[]")) # Array of video IDs
+    album_raw_images_ids = Column(ARRAY(Integer), nullable=True, server_default=text("'{}'::integer[]")) # Array of raw image IDs
+
     # Album Location
     album_location = Column(String, nullable=True)
     album_latitude = Column(Float, nullable=True)
