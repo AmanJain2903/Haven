@@ -3,7 +3,6 @@
 [![CI/CD Pipeline](https://github.com/AmanJain2903/Haven/actions/workflows/ci.yml/badge.svg)](https://github.com/AmanJain2903/Haven/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/AmanJain2903/Haven/branch/main/graph/badge.svg)](https://codecov.io/gh/AmanJain2903/Haven)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Status](https://img.shields.io/badge/Status-In_Development-blue)](https://github.com/AmanJain2903/Haven)
 ![Backend](https://img.shields.io/badge/Backend-FastAPI-009688)
 ![Frontend](https://img.shields.io/badge/Frontend-React-61DAFB)
@@ -56,3 +55,9 @@ graph TD
         AI -->|Save Embeddings| VectorDB
         Worker -->|Read/Write| Storage[Local SSD/HDD]
     end
+
+## License
+
+This project is source-available and intended for educational and research use.
+Commercial use is prohibited without explicit permission from the author.
+See the LICENSE file for full details.
