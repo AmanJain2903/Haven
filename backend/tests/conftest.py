@@ -6,6 +6,7 @@ import os
 import sys
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean, PickleType
+from sqlalchemy.sql import text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.sql import func
@@ -36,6 +37,7 @@ class Image(TestBase):
 
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, index=True)
+    is_favorite = Column(Boolean, default=False, server_default=text("FALSE"))
     file_path = Column(String, unique=True, index=True)  # Added for test compatibility
     file_size = Column(Integer)
     capture_date = Column(DateTime(timezone=True), server_default=func.now())
@@ -144,6 +146,7 @@ def sample_image_data():
     """
     return {
         "filename": "test_beach.jpg",
+        "is_favorite": False,
         "file_path": "/test/photos/test_beach.jpg",
         "file_size": 2048576,
         "latitude": 37.775,
@@ -161,6 +164,7 @@ def sample_images(db_session):
         Image(
             filename="beach.jpg",
             file_path="/test/beach.jpg",
+            is_favorite=False,
             file_size=1024000,
             width=4000,
             height=3000,
@@ -181,6 +185,7 @@ def sample_images(db_session):
         Image(
             filename="mountain.jpg",
             file_path="/test/mountain.jpg",
+            is_favorite=False,
             file_size=2048000,
             width=3840,
             height=2160,
@@ -201,6 +206,7 @@ def sample_images(db_session):
         Image(
             filename="city.heic",
             file_path="/test/city.heic",
+            is_favorite=False,
             file_size=3072000,
             width=4032,
             height=3024,
