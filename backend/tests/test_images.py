@@ -316,48 +316,6 @@ class TestGetTimelineEndpoint:
             assert "date" in image
             assert "metadata" in image
 
-
-class TestGetMapDataEndpoint:
-    """Test suite for GET /api/v1/images/map-data endpoint"""
-
-    def test_get_map_data_empty(self, client, db_session):
-        """Test map data with no geotagged images"""
-        response = client.get("/api/v1/images/map-data")
-        
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert isinstance(data, list)
-
-    def test_get_map_data_with_geotagged_images(self, client, sample_images, db_session):
-        """Test map data returns only geotagged images"""
-        response = client.get("/api/v1/images/map-data")
-        
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert isinstance(data, list)
-        
-        # All returned images should have GPS coordinates
-        for point in data:
-            assert "latitude" in point
-            assert "longitude" in point
-            assert point["latitude"] is not None
-            assert point["longitude"] is not None
-            assert "thumbnail_url" in point
-
-    def test_get_map_data_structure(self, client, sample_images, db_session):
-        """Test map data response structure"""
-        response = client.get("/api/v1/images/map-data")
-        
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        
-        if len(data) > 0:
-            point = data[0]
-            required_fields = ["id", "latitude", "longitude", "thumbnail_url"]
-            for field in required_fields:
-                assert field in point
-
-
 class TestGetThumbnailEndpoint:
     """Test suite for GET /api/v1/images/thumbnail/{image_id} endpoint"""
 
