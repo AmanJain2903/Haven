@@ -419,7 +419,7 @@ bg-clip-text text-transparent mb-2"
           // 3. Video Grid Row
           if (row.type === "photos") {
             return (
-              <div className="flex gap-4 mb-4">
+              <div className="flex gap-4 mb-4 mt-4">
                 {row.items.map((video, i) => (
                   <div key={video.id} className="flex-1 min-w-0">
                     <VideoCard

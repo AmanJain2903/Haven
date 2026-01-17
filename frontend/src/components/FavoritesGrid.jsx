@@ -711,7 +711,7 @@ bg-clip-text text-transparent mb-2"
           // 3. Media Grid Row
           if (row.type === "photos") {
             return (
-              <div className="flex gap-4 mb-4">
+              <div className="flex gap-4 mb-4 mt-4">
                 {row.items.map((media, i) => (
                   <div key={`${media.type}-${media.id}`} className="flex-1 min-w-0">
                     {media.type === "image" ? (

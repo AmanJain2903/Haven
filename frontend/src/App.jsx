@@ -9,9 +9,11 @@ import RawImageGrid from './components/RawImageGrid';
 import AllMediaGrid from './components/AllMediaGrid';
 import FavoritesGrid from './components/FavoritesGrid';
 import MapView from './components/MapView';
+import Albums from './components/Albums';
+import ProgressBar from './components/ProgressBar';
 import { useTheme } from './contexts/ThemeContext';
 
-import { api } from './api';
+import { api, getBatchTaskStatus } from './api';
 
 function App() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -69,6 +71,173 @@ function App() {
   const [favoritesHasMore, setFavoritesHasMore] = useState(true);
   const [favoritesTotalCount, setFavoritesTotalCount] = useState(0);
   const [favoritesStatusCode, setFavoritesStatusCode] = useState('');
+
+  // Progress bars state for background operations (supports multiple)
+  const [progressBars, setProgressBars] = useState([]);
+
+  // Helper function to add or update a progress bar
+  const updateProgressBar = useCallback((id, data) => {
+    setProgressBars(prev => {
+      const existing = prev.find(bar => bar.id === id);
+      if (existing) {
+        return prev.map(bar => bar.id === id ? { ...bar, ...data } : bar);
+      }
+      return [...prev, { id, ...data }];
+    });
+
+    // Persist active tasks to localStorage
+    if (data.taskId) {
+      const activeTasks = JSON.parse(localStorage.getItem('havenActiveTasks') || '{}');
+      activeTasks[id] = {
+        taskId: data.taskId,
+        type: data.type,
+        label: data.label,
+        total: data.total,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('havenActiveTasks', JSON.stringify(activeTasks));
+    }
+  }, []);
+
+  // Helper function to remove a progress bar
+  const removeProgressBar = useCallback((id) => {
+    setProgressBars(prev => prev.filter(bar => bar.id !== id));
+
+    // Remove from localStorage
+    const activeTasks = JSON.parse(localStorage.getItem('havenActiveTasks') || '{}');
+    delete activeTasks[id];
+    localStorage.setItem('havenActiveTasks', JSON.stringify(activeTasks));
+  }, []);
+
+  // Restore progress bars on mount from localStorage
+  useEffect(() => {
+    const restoreActiveTasks = async () => {
+      const activeTasks = JSON.parse(localStorage.getItem('havenActiveTasks') || '{}');
+      const taskIds = Object.keys(activeTasks);
+
+      if (taskIds.length === 0) return;
+
+      console.log('🔄 Restoring active tasks:', taskIds.length);
+
+      for (const progressId of taskIds) {
+        const taskInfo = activeTasks[progressId];
+        
+        // Skip tasks older than 1 hour (3600000 ms)
+        if (Date.now() - taskInfo.timestamp > 3600000) {
+          console.log('⏰ Skipping stale task:', progressId);
+          delete activeTasks[progressId];
+          continue;
+        }
+
+        try {
+          // Check task status
+          const status = await getBatchTaskStatus(taskInfo.taskId);
+          console.log('📊 Restored task status:', status);
+
+          // If still in progress, recreate the progress bar
+          if (status.status === 'in_progress') {
+            updateProgressBar(progressId, {
+              type: taskInfo.type,
+              label: taskInfo.label,
+              isVisible: true,
+              current: status.completed || 0,
+              total: status.total || taskInfo.total,
+              taskId: taskInfo.taskId
+            });
+
+            // Start polling for this task
+            startPollingTask(progressId, taskInfo.taskId, taskInfo.type, taskInfo.label, status.total || taskInfo.total);
+          } else {
+            // Task completed or failed, remove from localStorage
+            delete activeTasks[progressId];
+          }
+        } catch (error) {
+          console.error('Error restoring task:', progressId, error);
+          // Remove failed task from localStorage
+          delete activeTasks[progressId];
+        }
+      }
+
+      // Update localStorage with cleaned up tasks
+      localStorage.setItem('havenActiveTasks', JSON.stringify(activeTasks));
+    };
+
+    restoreActiveTasks();
+  }, []);
+
+  // Helper function to start polling a task (used by both new tasks and restored tasks)
+  const startPollingTask = useCallback((progressId, taskId, type, label, total) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await getBatchTaskStatus(taskId);
+        console.log(`📊 Task ${taskId} status:`, status);
+
+        // Update progress bar
+        updateProgressBar(progressId, {
+          isVisible: true,
+          current: status.completed || 0,
+          total: status.total || total
+        });
+
+        // Check if complete
+        if (status.status === 'completed') {
+          clearInterval(pollInterval);
+
+          // Update label for success  
+          const successLabel = type === 'deleting' 
+            ? label.includes('...') 
+              ? label.replace('Deleting', 'Album').replace('...', ' deleted successfully!')
+              : `Album deleted successfully!`
+            : label.includes('Adding')
+              ? label.replace('Adding', 'Added').replace('to ', 'to ')
+              : `Files added successfully!`;
+
+          updateProgressBar(progressId, {
+            label: successLabel,
+            isVisible: true,
+            current: status.total || total,
+            total: status.total || total
+          });
+
+          // Keep progress bar visible for 2 seconds
+          setTimeout(() => {
+            removeProgressBar(progressId);
+          }, 2000);
+
+        } else if (status.status === 'failed') {
+          clearInterval(pollInterval);
+
+          // Update to show error
+          const errorLabel = type === 'deleting' 
+            ? 'Failed to delete album'
+            : 'Failed to add files';
+
+          updateProgressBar(progressId, {
+            label: errorLabel,
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+
+          // Keep error visible longer
+          setTimeout(() => {
+            removeProgressBar(progressId);
+          }, 4000);
+        }
+      } catch (pollError) {
+        console.error('Error polling task status:', pollError);
+        // Continue polling even on error
+      }
+    }, 1000); // Poll every 1 second
+
+    // Safety: Stop polling after 10 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      removeProgressBar(progressId);
+    }, 600000);
+
+    return pollInterval;
+  }, [updateProgressBar, removeProgressBar]);
 
   // Global favorite toggle handler
   const handleGlobalFavoriteToggle = useCallback(async (id, type, newFavoriteState) => {
@@ -830,6 +999,11 @@ function App() {
   // Save active view to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('havenActiveView', activeView);
+    
+    // Clear selected album when navigating away from albums
+    if (activeView !== 'albums') {
+      localStorage.removeItem('havenSelectedAlbumId');
+    }
   }, [activeView]);
 
   // Scroll to top on page load (but preserve the active view)
@@ -1048,8 +1222,27 @@ function App() {
         </motion.div>
       </motion.button>
 
+      {/* Background Progress Bars */}
+      {progressBars.map((bar, index) => (
+        <ProgressBar
+          key={bar.id}
+          id={bar.id}
+          type={bar.type}
+          label={bar.label}
+          isVisible={bar.isVisible}
+          current={bar.current}
+          total={bar.total}
+          index={index}
+          onDismiss={() => {
+            setProgressBars(prev => prev.filter(b => b.id !== bar.id));
+          }}
+        />
+      ))}
+
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
-      <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
+      {activeView !== 'albums' && (
+        <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
+      )}
       
       {activeView === 'all' ? (
         <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
@@ -1067,6 +1260,16 @@ function App() {
             <MapView searchQuery={searchQuery} onFavoriteToggle={handleGlobalFavoriteToggle} />
           </div>
         </div>
+      ) : activeView === 'albums' ? (
+        <Albums 
+          onFavoriteToggle={handleGlobalFavoriteToggle}
+          searchQuery={searchQuery}
+          searchInputValue={searchInputValue}
+          onSearch={handleSearch}
+          onClearSearch={handleReset}
+          updateProgressBar={updateProgressBar}
+          removeProgressBar={removeProgressBar}
+        />
       ) : (
         <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
       )}

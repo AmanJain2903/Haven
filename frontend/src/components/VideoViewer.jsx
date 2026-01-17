@@ -8,6 +8,7 @@ import FavoriteButton from './FavoriteButton';
 import ShareButton from './ShareButton';
 import DownloadButton from './DownloadButton';
 import DeleteButton from './DeleteButton';
+import AddToAlbumModal from './AddToAlbumModal';
 
 const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos, onFavoriteToggle }) => {
   const { isDark } = useTheme();
@@ -17,6 +18,7 @@ const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos
   const [prevIndex, setPrevIndex] = useState(currentIndex);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   
   // Video-specific states
   const videoRef = useRef(null);
@@ -713,13 +715,13 @@ const handleSeekEnd = () => {
                         <button
                           onClick={() => {
                             setShowMoreOptions(false);
-                            // TODO: Add to album functionality
+                            setIsAddToAlbumModalOpen(true);
                           }}
                           className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
                                    text-slate-700 dark:text-white/80 transition-all duration-200"
                         >
                           <FolderPlus className="w-4 h-4" />
-                          <span className="text-sm font-medium">Add to Album</span>
+                          <span className="text-sm font-medium">Manage Albums</span>
                         </button>
 
                         {/* Add/Edit Location */}
@@ -742,6 +744,15 @@ const handleSeekEnd = () => {
             </div>
           </div>
         </div>
+
+        {/* Add to Album Modal */}
+        <AddToAlbumModal
+          isOpen={isAddToAlbumModalOpen}
+          onClose={() => setIsAddToAlbumModalOpen(false)}
+          fileId={activeVideo.id}
+          fileType="video"
+          fileName={activeVideo.filename}
+        />
       </motion.div>
   );
 };

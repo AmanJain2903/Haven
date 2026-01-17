@@ -20,6 +20,12 @@ from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 from datetime import datetime
 from sqlalchemy.ext.mutable import MutableList
 import numpy as np
+import uuid
+from app.tasks import task_batch_add_to_album, task_batch_delete_album
+import redis
+from app.core.config import settings
+
+redis_client = redis.from_url(settings.REDIS_URL)
 
 
 backend_url = settings.HOST_URL
@@ -193,7 +199,7 @@ def create_album(albumName: str = None, albumDescription: str = None, albumLocat
 @router.get("/getAlbums", response_model=List[dict])
 def get_albums(db: Session = Depends(get_db)):
     try:
-        albums = db.query(models.Albums).all()
+        albums = db.query(models.Albums).order_by(models.Albums.album_updated_at.desc()).all()
         return [
             {
                 "id": album.id,
@@ -270,20 +276,22 @@ def update_album(albumId: int, albumName: str = None, albumDescription: str = No
         album = db.query(models.Albums).filter(models.Albums.id == albumId).first()
         if not album:
             raise HTTPException(status_code=404, detail="Album not found")
-        if albumName:
-            album.album_name = albumName
-        if albumDescription:
-            album.album_description = albumDescription
-        if albumLocation:
-            album.album_location = albumLocation
-        if albumCity or albumState or albumCountry:
-            location = get_coordinates(albumCity, albumState, albumCountry)
-            if location:
-                album.album_latitude, album.album_longitude = location
-                album_location = get_location_parts(album.album_latitude, album.album_longitude)
-                album.album_city = album_location.get('city')
-                album.album_state = album_location.get('state')
-                album.album_country = album_location.get('country')
+        album.album_name = albumName
+        album.album_description = albumDescription
+        album.album_location = albumLocation
+        album.album_city = albumCity
+        album.album_state = albumState
+        album.album_country = albumCountry
+        location = get_coordinates(albumCity, albumState, albumCountry)
+        if location:
+            album.album_latitude, album.album_longitude = location
+            album_location = get_location_parts(album.album_latitude, album.album_longitude)
+            album.album_city = album_location.get('city')
+            album.album_state = album_location.get('state')
+            album.album_country = album_location.get('country')
+        else:
+            album.album_latitude = None
+            album.album_longitude = None
         album.album_updated_at = datetime.now()
         db.commit()
         return {"message": "Album updated successfully", "album": album.id}
@@ -648,3 +656,108 @@ def get_album_timeline(
         }
         for item in output
     ]
+
+@router.get("/getPartOfAlbums/{fileType}/{id}", response_model=dict)
+def get_part_of_albums(fileType: str, id: int, db: Session = Depends(get_db)):
+    if not fileType:
+        raise HTTPException(status_code=400, detail="File type is required")
+    if not id:
+        raise HTTPException(status_code=400, detail="File ID is required")
+    if fileType not in ["image", "video", "raw"]:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    try:
+        if fileType == "image":
+            file = db.query(models.Image).filter(models.Image.id == id).first()
+        elif fileType == "video":
+            file = db.query(models.Video).filter(models.Video.id == id).first()
+        elif fileType == "raw":
+            file = db.query(models.RawImage).filter(models.RawImage.id == id).first()
+        else:
+            raise HTTPException(status_code=400, detail="Invalid file type")
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        albums = file.album_ids
+        return {
+            "albums": albums
+        }
+    except Exception as e:
+        print(f"❌ Error getting part of albums: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- BATCH OPERATIONS WITH CELERY ---
+
+@router.post("/batch_add_to_album")
+def start_batch_add_to_album(
+    albumId: int,
+    files: List[dict],  # [{"type": "image", "id": 123}, ...]
+):
+    """
+    Start a background batch operation to add multiple files to an album.
+    Returns a task_id to track progress.
+    """
+    try:
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Start Celery task
+        task_batch_add_to_album.delay(task_id, albumId, files)
+        
+        return {
+            "task_id": task_id,
+            "status": "started",
+            "total": len(files)
+        }
+    except Exception as e:
+        print(f"❌ Error starting batch add: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/batch_delete_album")
+def start_batch_delete_album(albumId: int):
+    """
+    Start a background batch operation to delete an album.
+    Returns a task_id to track progress.
+    """
+    try:
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Start Celery task
+        task_batch_delete_album.delay(task_id, albumId)
+        
+        return {
+            "task_id": task_id,
+            "status": "started"
+        }
+    except Exception as e:
+        print(f"❌ Error starting batch delete: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/batch_task_status/{task_id}")
+def get_batch_task_status(task_id: str):
+    """
+    Get the current status of a batch operation.
+    """
+    try:
+        # Get task info from Redis
+        task_data = redis_client.hgetall(f"batch_task:{task_id}")
+        
+        if not task_data:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Decode bytes to strings
+        status_info = {
+            key.decode('utf-8'): value.decode('utf-8')
+            for key, value in task_data.items()
+        }
+        
+        # Convert numeric fields
+        for field in ['total', 'completed', 'failed', 'album_id']:
+            if field in status_info:
+                status_info[field] = int(status_info[field])
+        
+        return status_info
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting task status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

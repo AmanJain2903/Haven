@@ -8,6 +8,7 @@ import FavoriteButton from './FavoriteButton';
 import ShareButton from './ShareButton';
 import DownloadButton from './DownloadButton';
 import DeleteButton from './DeleteButton';
+import AddToAlbumModal from './AddToAlbumModal';
 
 const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, totalRawImages, onFavoriteToggle }) => {
   const { isDark } = useTheme();
@@ -18,6 +19,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
   const [prevIndex, setPrevIndex] = useState(currentIndex);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -687,13 +689,13 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                         <button
                           onClick={() => {
                             setShowMoreOptions(false);
-                            // TODO: Add to album functionality
+                            setIsAddToAlbumModalOpen(true);
                           }}
                           className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
                                    text-slate-700 dark:text-white/80 transition-all duration-200"
                         >
                           <FolderPlus className="w-4 h-4" />
-                          <span className="text-sm font-medium">Add to Album</span>
+                          <span className="text-sm font-medium">Manage Albums</span>
                         </button>
 
                         {/* Add/Edit Location */}
@@ -731,6 +733,15 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
             </button>
           </div>
         </div>
+
+        {/* Add to Album Modal */}
+        <AddToAlbumModal
+          isOpen={isAddToAlbumModalOpen}
+          onClose={() => setIsAddToAlbumModalOpen(false)}
+          fileId={activeRawImage.id}
+          fileType="raw"
+          fileName={activeRawImage.filename}
+        />
       </motion.div>
   );
 };

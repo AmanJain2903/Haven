@@ -396,7 +396,7 @@ bg-clip-text text-transparent mb-2"
 
           if (row.type === "photos") {
             return (
-              <div className="flex gap-4 mb-4">
+              <div className="flex gap-4 mb-4 mt-4">
                 {row.items.map((rawImage, i) => (
                   <div key={rawImage.id} className="flex-1 min-w-0">
                     <RawImageCard
