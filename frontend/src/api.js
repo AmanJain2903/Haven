@@ -2,6 +2,31 @@ import axios from 'axios';
 
 const API_URL = 'http://localhost:8000/api/v1';
 
+// Batch operations
+export const batchAddToAlbum = async (albumId, files) => {
+  const response = await fetch(`${API_URL}/albums/batch_add_to_album?albumId=${albumId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(files)
+  });
+  if (!response.ok) throw new Error('Failed to start batch add');
+  return response.json();
+};
+
+export const batchDeleteAlbum = async (albumId) => {
+  const response = await fetch(`${API_URL}/albums/batch_delete_album?albumId=${albumId}`, {
+    method: 'POST'
+  });
+  if (!response.ok) throw new Error('Failed to start batch delete');
+  return response.json();
+};
+
+export const getBatchTaskStatus = async (taskId) => {
+  const response = await fetch(`${API_URL}/albums/batch_task_status/${taskId}`);
+  if (!response.ok) throw new Error('Failed to get task status');
+  return response.json();
+};
+
 export const api = {
 
   // System API ENDPOINTS
@@ -246,6 +271,17 @@ export const api = {
     });
     return response.data;
   },
+
+  // Search albums
+  searchAlbums: async (albumId, query, skip=0, limit=500) => {
+    const response = await axios.post(`${API_URL}/intelligence/search/albums/${albumId}`, null, {
+      params: { query: query, skip: skip, limit: limit }
+    });
+    return {
+      albums: response.data,
+      total: parseInt(response.headers['x-total-count'] || 0, 10)
+    }
+  },
   // ------------------------------------------------------------
 
 
@@ -275,6 +311,75 @@ export const api = {
     const response = await axios.get(`${API_URL}/map/all_media`);
     return response.data;
   },
+  // ------------------------------------------------------------
+
+  // Albums API ENDPOINTS
+  // ------------------------------------------------------------
+  // Get all albums
+  createAlbum: async (albumName, albumDescription, albumLocation, albumCity, albumState, albumCountry) => {
+    const response = await axios.post(`${API_URL}/albums/create`, null, {
+      params: { albumName: albumName, albumDescription: albumDescription, albumLocation: albumLocation, albumCity: albumCity, albumState: albumState, albumCountry: albumCountry }
+    });
+    return response.data;
+  },
+
+  getAlbums: async () => {
+    const response = await axios.get(`${API_URL}/albums/getAlbums`);
+    return response.data;
+  },
+
+  getAlbum: async (albumId) => {
+    const response = await axios.get(`${API_URL}/albums/getAlbum/${albumId}`);
+    return response.data;
+  },
+
+  updateAlbum: async (albumId, albumName, albumDescription, albumLocation, albumCity, albumState, albumCountry) => {
+    const response = await axios.post(`${API_URL}/albums/update/${albumId}`, null, {
+      params: { albumName: albumName, albumDescription: albumDescription, albumLocation: albumLocation, albumCity: albumCity, albumState: albumState, albumCountry: albumCountry }
+    });
+    return response.data;
+  },
+
+  deleteAlbum: async (albumId) => {
+    const response = await axios.delete(`${API_URL}/albums/delete/${albumId}`);
+    return response.data;
+  },
+
+  addToAlbum: async (albumId, fileType, id) => {
+    const response = await axios.post(`${API_URL}/albums/addToAlbum/${albumId}/${fileType}/${id}`);
+    return response.data;
+  },
+
+  removeFromAlbum: async (albumId, fileType, id) => {
+    const response = await axios.post(`${API_URL}/albums/removeFromAlbum/${albumId}/${fileType}/${id}`);
+    return response.data;
+  },
+
+  updateAlbumCover: async (albumId, fileType, id) => {
+    const response = await axios.post(`${API_URL}/albums/updateAlbumCover/${albumId}/${fileType}/${id}`);
+    return response.data;
+  },
+
+  getAlbumCover: async (albumId) => {
+    const response = await axios.get(`${API_URL}/albums/getAlbumCover/${albumId}`);
+    return response.data;
+  },
+
+  getAlbumTimeline: async (albumId, skip=0, limit=500) => {
+    const response = await axios.get(`${API_URL}/albums/timeline/${albumId}`, {
+      params: { skip: skip, limit: limit }
+    });
+    return {
+      timeline: response.data,
+      total: parseInt(response.headers['x-total-count'] || 0, 10)
+    }
+  },
+
+  getPartOfAlbums: async (fileType, id) => {
+    const response = await axios.get(`${API_URL}/albums/getPartOfAlbums/${fileType}/${id}`);
+    return response.data;
+  },
+
   // ------------------------------------------------------------
 
 
