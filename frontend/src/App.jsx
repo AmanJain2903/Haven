@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SearchBar from './components/SearchBar';
@@ -11,6 +11,10 @@ import FavoritesGrid from './components/FavoritesGrid';
 import MapView from './components/MapView';
 import Albums from './components/Albums';
 import ProgressBar from './components/ProgressBar';
+import ComingSoon from './components/ComingSoon';
+import Dashboard from './components/Dashboard';
+import UploadButton from './components/UploadButton';
+import InsufficientSpaceModal from './components/InsufficientSpaceModal';
 import { useTheme } from './contexts/ThemeContext';
 
 import { api, getBatchTaskStatus } from './api';
@@ -74,6 +78,11 @@ function App() {
 
   // Progress bars state for background operations (supports multiple)
   const [progressBars, setProgressBars] = useState([]);
+  const [expandedProgressBars, setExpandedProgressBars] = useState(new Set());
+  const [albumDownloads, setAlbumDownloads] = useState({}); // Map albumId -> {taskId, progressId}
+  const downloadPollIntervalsRef = useRef({}); // Map progressId -> intervalId
+  const downloadStartedRef = useRef({}); // Map taskId -> boolean (prevents duplicate browser downloads)
+  const [showInsufficientSpaceModal, setShowInsufficientSpaceModal] = useState(false);
 
   // Helper function to add or update a progress bar
   const updateProgressBar = useCallback((id, data) => {
@@ -239,6 +248,894 @@ function App() {
     return pollInterval;
   }, [updateProgressBar, removeProgressBar]);
 
+  // Helper function to calculate total size needed for downloads
+  const calculateTotalSizeNeeded = useCallback((currentItemSize) => {
+    let totalSize = currentItemSize || 0;
+
+    // Calculate remaining size for all running downloads
+    progressBars.forEach(progressBar => {
+      if (progressBar.type === 'downloading' && progressBar.size) {
+        const progress = progressBar.progress || 0;
+        
+        // Calculate remaining percentage
+        const remainingPercentage = Math.max(0, (100 - progress) / 100);
+        
+        // Add remaining size
+        totalSize += progressBar.size * remainingPercentage;
+      }
+    });
+
+    return totalSize;
+  }, [progressBars]);
+
+  // Helper function to check space availability
+  const checkSpaceAvailability = useCallback(async (currentItemSize) => {
+    try {
+      const totalSizeNeeded = await calculateTotalSizeNeeded(currentItemSize);
+      const hasSpace = await api.checkSpaceAvailable(totalSizeNeeded);
+      return hasSpace;
+    } catch (error) {
+      console.error('Error checking space availability:', error);
+      // If check fails, allow download to proceed (fail open)
+      return true;
+    }
+  }, [calculateTotalSizeNeeded]);
+
+  // Helper function to start polling a download task (albums)
+  const startPollingDownloadTask = useCallback((progressId, taskId, albumName, albumId) => {
+    let downloadTriggered = false; // Flag to prevent double downloads
+
+    // Prevent duplicate polling intervals for the same progress bar (React StrictMode, restores, etc.)
+    if (downloadPollIntervalsRef.current[progressId]) {
+      return downloadPollIntervalsRef.current[progressId];
+    }
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        // Check if this interval was cancelled (removed from ref)
+        if (!downloadPollIntervalsRef.current[progressId]) {
+          console.log('🛑 Download cancelled, stopping polling:', progressId);
+          clearInterval(pollInterval);
+          return;
+        }
+        
+        const status = await api.getDownloadTaskStatus(taskId);
+        console.log(`📦 Download ${taskId} status:`, status);
+
+        const completed = status.completed || 0;
+        const total = status.total || 1;
+        const progress = status.progress || 0;
+
+        // Update progress bar with detailed label
+        updateProgressBar(progressId, {
+          label: `Preparing "${albumName}"...`,
+          isVisible: true,
+          current: completed,
+          total: total,
+          progress: progress
+        });
+
+        // Check if cancelled
+        if (status.status === 'cancelled') {
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+          
+          // Update to show cancelled state
+          updateProgressBar(progressId, {
+            label: 'Download cancelled',
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+
+          // Clean up backend
+          setTimeout(async () => {
+            try {
+              await api.cleanupDownload(taskId);
+              console.log('🗑️ Cleanup completed for:', taskId);
+            } catch (cleanupError) {
+              console.error('Cleanup error:', cleanupError);
+            }
+          }, 5000);
+          
+          // Remove progress bar after 2 seconds
+          setTimeout(() => {
+            removeProgressBar(progressId);
+            // Remove album from tracking
+            setAlbumDownloads(prev => {
+              const newMap = { ...prev };
+              delete newMap[albumId];
+              return newMap;
+            });
+          }, 2000);
+          
+          return;
+        }
+        
+        // Check if complete
+        if (status.status === 'completed' && !downloadTriggered) {
+          downloadTriggered = true; // Mark as triggered to prevent double updates
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+
+          // Update label for success - file is ready in downloads folder
+          const finalTotal = status.total || 1;
+          updateProgressBar(progressId, {
+            label: `"${albumName}" ready (${finalTotal} files)`,
+            isVisible: true,
+            current: finalTotal,
+            total: finalTotal,
+            progress: 100
+          });
+
+          console.log('✅ Download complete:', status.zip_filename, '- File available in downloads folder');
+
+          // Keep progress bar visible for 3 seconds after completion
+          setTimeout(() => {
+            removeProgressBar(progressId);
+            // Remove album from tracking
+            setAlbumDownloads(prev => {
+              const newMap = { ...prev };
+              delete newMap[albumId];
+              return newMap;
+            });
+          }, 3000);
+
+        } else if (status.status === 'failed') {
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+
+          // Update to show error
+          updateProgressBar(progressId, {
+            label: `Failed to download "${albumName}"`,
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+
+          // Cleanup Backend
+          setTimeout(async () => {
+            try {
+              await api.cleanupDownload(taskId);
+              console.log('🗑️ Cleanup completed for:', taskId);
+            } catch (cleanupError) {
+              console.error('Cleanup error:', cleanupError);
+            }
+          }, 5000);
+
+          // Keep error visible longer
+          setTimeout(() => {
+            removeProgressBar(progressId);
+            // Remove album from tracking
+            setAlbumDownloads(prev => {
+              const newMap = { ...prev };
+              delete newMap[albumId];
+              return newMap;
+            });
+          }, 4000);
+        }
+      } catch (pollError) {
+        console.error('Error polling download status:', pollError);
+        // Continue polling even on error
+      }
+    }, 1000); // Poll every 1 second
+
+    // Store the interval so we can clear it if cancelled
+    downloadPollIntervalsRef.current[progressId] = pollInterval;
+
+    // Safety: Stop polling after 30 minutes (downloads can be large)
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      delete downloadPollIntervalsRef.current[progressId];
+      removeProgressBar(progressId);
+      // Remove album from tracking
+      setAlbumDownloads(prev => {
+        const newMap = { ...prev };
+        delete newMap[albumId];
+        return newMap;
+      });
+    }, 1800000);
+
+    return pollInterval;
+  }, [updateProgressBar, removeProgressBar]);
+
+  // Helper function to start polling a vault download task
+  const startPollingVaultDownload = useCallback((progressId, taskId) => {
+    let downloadTriggered = false;
+
+    if (downloadPollIntervalsRef.current[progressId]) {
+      return downloadPollIntervalsRef.current[progressId];
+    }
+    const cleanupMapping = () => {
+      setAlbumDownloads(prev => {
+        const newMap = { ...prev };
+        delete newMap['vault'];
+        return newMap;
+      });
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      if (activeDownloads[progressId]) {
+        delete activeDownloads[progressId];
+        localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+      }
+    };
+
+    const pollInterval = setInterval(async () => {
+      try {
+        if (!downloadPollIntervalsRef.current[progressId]) {
+          clearInterval(pollInterval);
+          return;
+        }
+
+        const status = await api.getVaultDownloadTaskStatus(taskId);
+        const completed = status.completed || 0;
+        const total = status.total || 0;
+        const progress = status.progress || 0;
+
+        // Update progress bar with current status
+        if (status.status === 'in_progress') {
+          updateProgressBar(progressId, {
+            label: `Preparing "Haven Vault"...`,
+            isVisible: true,
+            current: completed,
+            total: total || 1,
+            progress: progress
+          });
+        }
+
+        if (status.status === 'cancelled') {
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+          updateProgressBar(progressId, {
+            label: 'Download cancelled',
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 2000);
+          // Cleanup after a delay (give browser time to start download)
+          setTimeout(async () => {
+            try { 
+              await api.cleanupVaultDownload(taskId); 
+            } catch (e) { 
+              console.error('Cleanup error:', e); 
+            }
+          }, 5000);
+          return;
+        }
+
+        if (status.status === 'completed' && !downloadTriggered) {
+          downloadTriggered = true;
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+
+          const finalTotal = status.total || 1;
+          updateProgressBar(progressId, {
+            label: `"Haven Vault" ready (${finalTotal} files)`,
+            isVisible: true,
+            current: finalTotal,
+            total: finalTotal,
+            progress: 100
+          });
+
+          console.log('✅ Vault download complete:', status.zip_filename, '- File available in downloads folder');
+
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 3000);
+        } else if (status.status === 'failed') {
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+          updateProgressBar(progressId, {
+            label: `Failed to download Haven Vault`,
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 4000);
+          // Cleanup after a delay (give browser time to start download)
+          setTimeout(async () => {
+            try { 
+              await api.cleanupVaultDownload(taskId); 
+            } catch (e) { 
+              console.error('Cleanup error:', e); 
+            }
+          }, 5000);
+        }
+      } catch (pollError) {
+        console.error('Error polling vault download status:', pollError);
+      }
+    }, 1000);
+
+    downloadPollIntervalsRef.current[progressId] = pollInterval;
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      delete downloadPollIntervalsRef.current[progressId];
+      removeProgressBar(progressId);
+      cleanupMapping();
+    }, 1800000); // 30 min
+
+    return pollInterval;
+  }, [updateProgressBar, removeProgressBar]);
+
+  // Function to start album download
+  const startAlbumDownload = useCallback(async (albumId, albumName) => {
+    try {
+      // Get album data to check size
+      const albumData = await api.getAlbum(albumId);
+      const albumSize = albumData.album_size || 0;
+
+      // Check space availability
+      const hasSpace = await checkSpaceAvailability(albumSize);
+      if (!hasSpace) {
+        setShowInsufficientSpaceModal(true);
+        return;
+      }
+
+      // Start the download task
+      const result = await api.startAlbumDownload(albumId);
+      const taskId = result.task_id;
+      const progressId = `download_${taskId}`;
+
+      console.log('📦 Starting album download:', albumName, taskId);
+
+      // Create progress bar
+      updateProgressBar(progressId, {
+        type: 'downloading',
+        label: `Preparing "${albumName}"...`,
+        isVisible: true,
+        current: 0,
+        total: 0,
+        progress: 0,
+        taskId: taskId,
+        size: albumSize
+      });
+
+      // Track album-to-download mapping
+      setAlbumDownloads(prev => ({
+        ...prev,
+        [albumId]: { taskId, progressId, downloadType: 'album' }
+      }));
+
+      // Persist to localStorage for downloads
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      activeDownloads[progressId] = {
+        taskId: taskId,
+        albumId: albumId,
+        albumName: albumName,
+        downloadType: 'album',
+        timestamp: Date.now()
+      };
+      localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+
+      // Start polling
+      startPollingDownloadTask(progressId, taskId, albumName, albumId);
+
+    } catch (error) {
+      console.error('Error starting album download:', error);
+      alert(`Failed to start download: ${error.message}`);
+    }
+  }, [updateProgressBar, startPollingDownloadTask, checkSpaceAvailability]);
+
+  // Function to start Haven Vault download
+  const startVaultDownload = useCallback(async () => {
+    try {
+      // Get storage path and vault data breakdown to calculate size
+      const storagePath = await api.getStoragePath();
+      if (!storagePath) {
+        alert('Storage path not configured');
+        return;
+      }
+
+      const vaultBreakdown = await api.getHavenVaultDataBreakdown(storagePath);
+      const vaultSize = vaultBreakdown.total_size || 0;
+
+      // Check space availability
+      const hasSpace = await checkSpaceAvailability(vaultSize);
+      if (!hasSpace) {
+        setShowInsufficientSpaceModal(true);
+        return;
+      }
+
+      const result = await api.startVaultDownload();
+      const taskId = result.task_id;
+      const progressId = `vault_${taskId}`;
+      const albumName = 'Haven Vault';
+      const albumId = 'vault';
+
+      updateProgressBar(progressId, {
+        type: 'downloading',
+        label: `Preparing "${albumName}"...`,
+        isVisible: true,
+        current: 0,
+        total: 0,
+        progress: 0,
+        taskId,
+        size: vaultSize
+      });
+
+      // Track in mapping
+      setAlbumDownloads(prev => ({
+        ...prev,
+        [albumId]: { taskId, progressId, downloadType: 'vault' }
+      }));
+
+      // Persist to localStorage
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      activeDownloads[progressId] = {
+        taskId,
+        albumId,
+        albumName,
+        downloadType: 'vault',
+        timestamp: Date.now()
+      };
+      localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+
+      // Start polling
+      startPollingVaultDownload(progressId, taskId);
+    } catch (error) {
+      console.error('Error starting vault download:', error);
+      alert(`Failed to start Haven Vault download: ${error.message}`);
+    }
+  }, [updateProgressBar, startPollingVaultDownload, checkSpaceAvailability]);
+
+  // Helper function to start polling an app data download task
+  const startPollingAppDataDownload = useCallback((progressId, taskId) => {
+    let downloadTriggered = false;
+
+    if (downloadPollIntervalsRef.current[progressId]) {
+      return downloadPollIntervalsRef.current[progressId];
+    }
+    const cleanupMapping = () => {
+      setAlbumDownloads(prev => {
+        const newMap = { ...prev };
+        delete newMap['appdata'];
+        return newMap;
+      });
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      if (activeDownloads[progressId]) {
+        delete activeDownloads[progressId];
+        localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+      }
+    };
+
+    const pollInterval = setInterval(async () => {
+      try {
+        if (!downloadPollIntervalsRef.current[progressId]) {
+          clearInterval(pollInterval);
+          return;
+        }
+
+        const status = await api.getAppDataDownloadTaskStatus(taskId);
+        const completed = status.completed || 0;
+        const total = status.total || 0;
+        const progress = status.progress || 0;
+
+        // Update progress bar with current status
+        if (status.status === 'in_progress') {
+          updateProgressBar(progressId, {
+            label: `Preparing "Haven App Data"...`,
+            isVisible: true,
+            current: completed,
+            total: total || 1,
+            progress: progress
+          });
+        }
+
+        if (status.status === 'cancelled') {
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+          updateProgressBar(progressId, {
+            label: 'Download cancelled',
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 2000);
+          // Cleanup after a delay
+          setTimeout(async () => {
+            try { 
+              await api.cleanupAppDataDownload(taskId); 
+            } catch (e) { 
+              console.error('Cleanup error:', e); 
+            }
+          }, 5000);
+          return;
+        }
+
+        if (status.status === 'completed' && !downloadTriggered) {
+          downloadTriggered = true;
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+
+          const finalTotal = status.total || 1;
+          updateProgressBar(progressId, {
+            label: `"Haven App Data" ready (${finalTotal} files)`,
+            isVisible: true,
+            current: finalTotal,
+            total: finalTotal,
+            progress: 100
+          });
+
+          console.log('✅ App data download complete:', status.zip_filename, '- File available in downloads folder');
+
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 3000);
+        } else if (status.status === 'failed') {
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+          updateProgressBar(progressId, {
+            label: `Failed to download Haven App Data`,
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 4000);
+          // Cleanup after a delay
+          setTimeout(async () => {
+            try { 
+              await api.cleanupAppDataDownload(taskId); 
+            } catch (e) { 
+              console.error('Cleanup error:', e); 
+            }
+          }, 5000);
+        }
+      } catch (pollError) {
+        console.error('Error polling app data download status:', pollError);
+      }
+    }, 1000);
+
+    downloadPollIntervalsRef.current[progressId] = pollInterval;
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      delete downloadPollIntervalsRef.current[progressId];
+      removeProgressBar(progressId);
+      cleanupMapping();
+    }, 1800000); // 30 min
+
+    return pollInterval;
+  }, [updateProgressBar, removeProgressBar]);
+
+  // Helper function to start polling a metadata download task
+  const startPollingMetadataDownload = useCallback((progressId, taskId) => {
+    let downloadTriggered = false;
+
+    if (downloadPollIntervalsRef.current[progressId]) {
+      return downloadPollIntervalsRef.current[progressId];
+    }
+
+    const cleanupMapping = () => {
+      setAlbumDownloads(prev => {
+        const newMap = { ...prev };
+        delete newMap['metadata'];
+        return newMap;
+      });
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      if (activeDownloads[progressId]) {
+        delete activeDownloads[progressId];
+        localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+      }
+    };
+
+    const pollInterval = setInterval(async () => {
+      try {
+        if (!downloadPollIntervalsRef.current[progressId]) {
+          clearInterval(pollInterval);
+          return;
+        }
+
+        const status = await api.getMetadataDownloadTaskStatus(taskId);
+        const completed = status.completed || 0;
+        const total = status.total || 0;
+        const progress = status.progress || 0;
+
+        // Update progress bar with current status
+        if (status.status === 'in_progress') {
+          updateProgressBar(progressId, {
+            label: `Preparing "Metadata"...`,
+            isVisible: true,
+            current: completed,
+            total: total || 1,
+            progress: progress
+          });
+        }
+
+        if (status.status === 'cancelled') {
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+          updateProgressBar(progressId, {
+            label: 'Download cancelled',
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 2000);
+          // Cleanup after a delay
+          setTimeout(async () => {
+            try { 
+              await api.cleanupMetadataDownload(taskId); 
+            } catch (e) { 
+              console.error('Cleanup error:', e); 
+            }
+          }, 5000);
+          return;
+        }
+
+        if (status.status === 'completed' && !downloadTriggered) {
+          downloadTriggered = true;
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+
+          const finalTotal = status.total || 1;
+          updateProgressBar(progressId, {
+            label: `"Metadata" ready (${finalTotal} files)`,
+            isVisible: true,
+            current: finalTotal,
+            total: finalTotal,
+            progress: 100
+          });
+
+          console.log('✅ Metadata download complete:', status.zip_filename, '- File available in downloads folder');
+
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 3000);
+        } else if (status.status === 'failed') {
+          clearInterval(pollInterval);
+          delete downloadPollIntervalsRef.current[progressId];
+          updateProgressBar(progressId, {
+            label: `Failed to download Metadata`,
+            isVisible: true,
+            current: 0,
+            total: 1
+          });
+          cleanupMapping();
+          setTimeout(() => removeProgressBar(progressId), 4000);
+          // Cleanup after a delay
+          setTimeout(async () => {
+            try { 
+              await api.cleanupMetadataDownload(taskId); 
+            } catch (e) { 
+              console.error('Cleanup error:', e); 
+            }
+          }, 5000);
+        }
+      } catch (pollError) {
+        console.error('Error polling metadata download status:', pollError);
+      }
+    }, 1000);
+
+    downloadPollIntervalsRef.current[progressId] = pollInterval;
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      delete downloadPollIntervalsRef.current[progressId];
+      removeProgressBar(progressId);
+      cleanupMapping();
+    }, 1800000); // 30 min
+
+    return pollInterval;
+  }, [updateProgressBar, removeProgressBar]);
+
+  // Function to start Haven App Data download
+  const startAppDataDownload = useCallback(async () => {
+    try {
+      // Get app data size
+      const appDataSize = await api.getHavenAppDataSize();
+
+      // Check space availability
+      const hasSpace = await checkSpaceAvailability(appDataSize);
+      if (!hasSpace) {
+        setShowInsufficientSpaceModal(true);
+        return;
+      }
+
+      const result = await api.startAppDataDownload();
+      const taskId = result.task_id;
+      const progressId = `appdata_${taskId}`;
+      const albumName = 'Haven App Data';
+      const albumId = 'appdata';
+
+      updateProgressBar(progressId, {
+        type: 'downloading',
+        label: `Preparing "${albumName}"...`,
+        isVisible: true,
+        current: 0,
+        total: 0,
+        progress: 0,
+        taskId,
+        size: appDataSize
+      });
+
+      // Track in mapping
+      setAlbumDownloads(prev => ({
+        ...prev,
+        [albumId]: { taskId, progressId, downloadType: 'appdata' }
+      }));
+
+      // Persist to localStorage
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      activeDownloads[progressId] = {
+        taskId,
+        albumId,
+        albumName,
+        downloadType: 'appdata',
+        timestamp: Date.now()
+      };
+      localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+
+      // Start polling
+      startPollingAppDataDownload(progressId, taskId);
+    } catch (error) {
+      console.error('Error starting app data download:', error);
+      alert(`Failed to start Haven App Data download: ${error.message}`);
+    }
+  }, [updateProgressBar, startPollingAppDataDownload, checkSpaceAvailability]);
+
+  // Function to start Metadata download
+  const startMetadataDownload = useCallback(async () => {
+    try {
+      // Get metadata information to calculate size
+      const metadataInfo = await api.getMetadataInformation();
+      const metadataSize = metadataInfo.total_size_bytes || 0;
+
+      // Check space availability
+      const hasSpace = await checkSpaceAvailability(metadataSize);
+      if (!hasSpace) {
+        setShowInsufficientSpaceModal(true);
+        return;
+      }
+
+      const result = await api.startMetadataDownload();
+      const taskId = result.task_id;
+      const progressId = `metadata_${taskId}`;
+      const albumName = 'Haven Metadata';
+      const albumId = 'metadata';
+
+      updateProgressBar(progressId, {
+        type: 'downloading',
+        label: `Preparing "${albumName}"...`,
+        isVisible: true,
+        current: 0,
+        total: 0,
+        progress: 0,
+        taskId,
+        size: metadataSize
+      });
+
+      // Track in mapping
+      setAlbumDownloads(prev => ({
+        ...prev,
+        [albumId]: { taskId, progressId, downloadType: 'metadata' }
+      }));
+
+      // Persist to localStorage
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      activeDownloads[progressId] = {
+        taskId,
+        albumId,
+        albumName,
+        downloadType: 'metadata',
+        timestamp: Date.now()
+      };
+      localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+
+      // Start polling
+      startPollingMetadataDownload(progressId, taskId);
+    } catch (error) {
+      console.error('Error starting metadata download:', error);
+      alert(`Failed to start Metadata download: ${error.message}`);
+    }
+  }, [updateProgressBar, startPollingMetadataDownload, checkSpaceAvailability]);
+
+  // Restore active downloads on mount
+  useEffect(() => {
+    const restoreActiveDownloads = async () => {
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      const downloadIds = Object.keys(activeDownloads);
+
+      if (downloadIds.length === 0) return;
+
+      console.log('🔄 Restoring active downloads:', downloadIds.length);
+
+      const restoredMapping = {};
+
+      for (const progressId of downloadIds) {
+        const downloadInfo = activeDownloads[progressId];
+
+        // If we already started polling this progressId in this session, skip
+        if (downloadPollIntervalsRef.current[progressId]) {
+          continue;
+        }
+        
+        // Skip downloads older than 2 hours (7200000 ms)
+        if (Date.now() - downloadInfo.timestamp > 7200000) {
+          console.log('⏰ Skipping stale download:', progressId);
+          delete activeDownloads[progressId];
+          continue;
+        }
+
+        const downloadType = downloadInfo.downloadType || 'album';
+        const labelName =
+          downloadType === 'vault'
+            ? 'Haven Vault'
+            : downloadType === 'appdata'
+              ? 'Haven App Data'
+              : downloadType === 'metadata'
+                ? 'Metadata'
+                : downloadInfo.albumName;
+
+        try {
+          let status;
+          if (downloadType === 'vault') {
+            status = await api.getVaultDownloadTaskStatus(downloadInfo.taskId);
+          } else if (downloadType === 'appdata') {
+            status = await api.getAppDataDownloadTaskStatus(downloadInfo.taskId);
+          } else if (downloadType === 'metadata') {
+            status = await api.getMetadataDownloadTaskStatus(downloadInfo.taskId);
+          } else {
+            status = await api.getDownloadTaskStatus(downloadInfo.taskId);
+          }
+          console.log('📊 Restored download status:', status);
+
+          if (status.status === 'in_progress') {
+            const completed = status.completed || 0;
+            const total = status.total || 0;
+            const progress = status.progress || 0;
+
+            updateProgressBar(progressId, {
+              type: 'downloading',
+              label: `Preparing "${labelName}"...`,
+              isVisible: true,
+              current: completed,
+              total: total,
+              progress: progress,
+              taskId: downloadInfo.taskId
+            });
+
+            restoredMapping[downloadInfo.albumId] = {
+              taskId: downloadInfo.taskId,
+              progressId: progressId,
+              downloadType
+            };
+
+            if (downloadType === 'vault') {
+              startPollingVaultDownload(progressId, downloadInfo.taskId);
+            } else if (downloadType === 'appdata') {
+              startPollingAppDataDownload(progressId, downloadInfo.taskId);
+            } else if (downloadType === 'metadata') {
+              startPollingMetadataDownload(progressId, downloadInfo.taskId);
+            } else {
+              startPollingDownloadTask(progressId, downloadInfo.taskId, labelName, downloadInfo.albumId);
+            }
+          } else if (status.status === 'completed') {
+            // Completed while the app was reloading: file is already in downloads folder
+            console.log('✅ Download was completed:', downloadInfo.taskId, '- File available in downloads folder');
+            
+            // Remove from active downloads since it's already complete
+            delete activeDownloads[progressId];
+          } else {
+            delete activeDownloads[progressId];
+          }
+        } catch (error) {
+          console.error('Error restoring download:', progressId, error);
+          delete activeDownloads[progressId];
+        }
+      }
+
+      // Update localStorage with cleaned up downloads
+      localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+      
+      // Restore album download mapping
+      if (Object.keys(restoredMapping).length > 0) {
+        setAlbumDownloads(restoredMapping);
+      }
+    };
+
+    restoreActiveDownloads();
+  }, [updateProgressBar, startPollingDownloadTask]);
+
   // Global favorite toggle handler
   const handleGlobalFavoriteToggle = useCallback(async (id, type, newFavoriteState) => {
     // Helper function to update is_favorite in an array
@@ -332,6 +1229,257 @@ function App() {
     loadMoreFavorites();
     }
   }, [LIMIT]);
+
+  // Handle location update - reload current view while maintaining scroll position
+  const handleLocationUpdate = useCallback(async () => {
+    // Reload data for the current view, maintaining the current scroll position
+    // by reloading all items up to the current skip value
+    
+    if (activeView === 'all') {
+      if (allMediaSkip === 0) return; // No data loaded yet
+      
+      setAllMediaLoading(true);
+      try {
+        let response;
+        if (searchQuery) {
+          response = await api.searchAllMedia(searchQuery, 0, allMediaSkip);
+        } else {
+          response = await api.getAllMediaThumbnails(0, allMediaSkip);
+        }
+        
+        const { allMedia: reloadedMedia, total } = response;
+        setAllMedia(reloadedMedia);
+        setAllMediaTotalCount(total);
+        setAllMediaHasMore(reloadedMedia.length >= allMediaSkip);
+      } catch (error) {
+        console.error('Failed to reload all media:', error);
+      } finally {
+        setAllMediaLoading(false);
+      }
+    } else if (activeView === 'photos') {
+      if (skip === 0) return;
+      
+      setLoading(true);
+      try {
+        let response;
+        if (searchQuery) {
+          response = await api.searchPhotos(searchQuery, 0, skip);
+        } else {
+          response = await api.getThumbnails(0, skip);
+        }
+        
+        const { photos: reloadedPhotos, total } = response;
+        setPhotos(reloadedPhotos);
+        setTotalCount(total);
+        setHasMore(reloadedPhotos.length >= skip);
+      } catch (error) {
+        console.error('Failed to reload photos:', error);
+      } finally {
+        setLoading(false);
+      }
+    } else if (activeView === 'videos') {
+      if (videoSkip === 0) return;
+      
+      setVideoLoading(true);
+      try {
+        let response;
+        if (searchQuery) {
+          response = await api.searchVideos(searchQuery, 0, videoSkip);
+        } else {
+          response = await api.getVideoThumbnails(0, videoSkip);
+        }
+        
+        const { videos: reloadedVideos, total } = response;
+        setVideos(reloadedVideos);
+        setVideoTotalCount(total);
+        setVideoHasMore(reloadedVideos.length >= videoSkip);
+      } catch (error) {
+        console.error('Failed to reload videos:', error);
+      } finally {
+        setVideoLoading(false);
+      }
+    } else if (activeView === 'raw') {
+      if (rawSkip === 0) return;
+      
+      setRawLoading(true);
+      try {
+        let response;
+        if (searchQuery) {
+          response = await api.searchRawImages(searchQuery, 0, rawSkip);
+        } else {
+          response = await api.getRawThumbnails(0, rawSkip);
+        }
+        
+        const { rawImages: reloadedRawImages, total } = response;
+        setRawImages(reloadedRawImages);
+        setRawTotalCount(total);
+        setRawHasMore(reloadedRawImages.length >= rawSkip);
+      } catch (error) {
+        console.error('Failed to reload raw images:', error);
+      } finally {
+        setRawLoading(false);
+      }
+    } else if (activeView === 'favorites') {
+      if (favoritesSkip === 0) return;
+      
+      setFavoritesLoading(true);
+      try {
+        let response;
+        if (searchQuery) {
+          response = await api.searchFavorites(searchQuery, 0, favoritesSkip);
+        } else {
+          response = await api.getAllFavoritesThumbnails(0, favoritesSkip);
+        }
+        
+        const { favorites: reloadedFavorites, total } = response;
+        setFavorites(reloadedFavorites);
+        setFavoritesTotalCount(total);
+        setFavoritesHasMore(reloadedFavorites.length >= favoritesSkip);
+      } catch (error) {
+        console.error('Failed to reload favorites:', error);
+      } finally {
+        setFavoritesLoading(false);
+      }
+    }
+  }, [activeView, skip, videoSkip, rawSkip, allMediaSkip, favoritesSkip, searchQuery]);
+
+  // Handle delete - remove item from state and update count
+  // Check if an album has an active download
+  const hasActiveDownload = useCallback((albumId) => {
+    return albumDownloads.hasOwnProperty(albumId);
+  }, [albumDownloads]);
+
+  // Cancel an active download (album or vault)
+  const cancelAlbumDownload = useCallback(async (albumId) => {
+    const downloadInfo = albumDownloads[albumId];
+    if (!downloadInfo) {
+      console.log('No active download found for album:', albumId);
+      return;
+    }
+
+    const { taskId, progressId, downloadType } = downloadInfo;
+    
+    try {
+      // Clear the polling interval first to stop updates
+      const pollInterval = downloadPollIntervalsRef.current[progressId];
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        delete downloadPollIntervalsRef.current[progressId];
+        console.log('🛑 Stopped polling for:', progressId);
+      }
+      
+      // Cancel the backend task
+      if (downloadType === 'vault') {
+        await api.cancelVaultDownload(taskId);
+      } else if (downloadType === 'appdata') {
+        await api.cancelAppDataDownload(taskId);
+      } else {
+        await api.cancelDownload(taskId);
+      }
+      console.log('🚫 Cancelled download:', taskId);
+      
+      // Update progress bar to show cancelled state
+      updateProgressBar(progressId, {
+        label: 'Download cancelled',
+        isVisible: true,
+        current: 0,
+        total: 1
+      });
+      
+      // Cleanup backend files after a delay
+      setTimeout(async () => {
+        try {
+          if (downloadType === 'vault') {
+            await api.cleanupVaultDownload(taskId);
+          } else if (downloadType === 'appdata') {
+            await api.cleanupAppDataDownload(taskId);
+          } else {
+            await api.cleanupDownload(taskId);
+          }
+          console.log('🗑️ Cleanup completed for:', taskId);
+        } catch (cleanupError) {
+          console.error('Cleanup error:', cleanupError);
+        }
+      }, 5000);
+      
+      // Remove progress bar after 2 seconds
+      setTimeout(() => {
+        removeProgressBar(progressId);
+      }, 2000);
+      
+      // Remove from tracking
+      setAlbumDownloads(prev => {
+        const newMap = { ...prev };
+        delete newMap[albumId];
+        return newMap;
+      });
+      
+      // Clean up localStorage
+      const activeDownloads = JSON.parse(localStorage.getItem('havenActiveDownloads') || '{}');
+      delete activeDownloads[progressId];
+      localStorage.setItem('havenActiveDownloads', JSON.stringify(activeDownloads));
+      
+    } catch (error) {
+      console.error('Error cancelling download:', error);
+      alert(`Failed to cancel download: ${error.message}`);
+    }
+  }, [albumDownloads, updateProgressBar, removeProgressBar]);
+
+  // Cancel vault download specifically
+  const cancelVaultDownload = useCallback(async () => {
+    await cancelAlbumDownload('vault');
+  }, [cancelAlbumDownload]);
+
+  // Check if vault download is active
+  const hasActiveVaultDownload = useCallback(() => {
+    return albumDownloads.hasOwnProperty('vault');
+  }, [albumDownloads]);
+
+  const cancelAppDataDownload = useCallback(async () => {
+    await cancelAlbumDownload('appdata');
+  }, [cancelAlbumDownload]);
+
+  const hasActiveAppDataDownload = useCallback(() => {
+    return albumDownloads.hasOwnProperty('appdata');
+  }, [albumDownloads]);
+
+  const cancelMetadataDownload = useCallback(async () => {
+    await cancelAlbumDownload('metadata');
+  }, [cancelAlbumDownload]);
+
+  const hasActiveMetadataDownload = useCallback(() => {
+    return albumDownloads.hasOwnProperty('metadata');
+  }, [albumDownloads]);
+
+  const handleDelete = useCallback((id, type) => {
+    // Helper function to remove item from an array
+    const removeItemFromArray = (items) => {
+      if (!items || !Array.isArray(items)) return items || [];
+      return items.filter(item => {
+        // Match by both id and type for mixed arrays (like allMedia, favorites)
+        const itemType = item.type || (type === 'image' ? 'image' : type === 'video' ? 'video' : 'raw');
+        return !(item.id === id && itemType === type);
+      });
+    };
+
+    // Update all relevant state arrays
+    if (type === 'image') {
+      setPhotos(prev => removeItemFromArray(prev));
+      setTotalCount(prev => Math.max(0, prev - 1));
+    } else if (type === 'video') {
+      setVideos(prev => removeItemFromArray(prev));
+      setVideoTotalCount(prev => Math.max(0, prev - 1));
+    } else if (type === 'raw') {
+      setRawImages(prev => removeItemFromArray(prev));
+      setRawTotalCount(prev => Math.max(0, prev - 1));
+    }
+
+    // Always update allMedia and favorites arrays (file might be in there)
+    setAllMedia(prev => removeItemFromArray(prev));
+    setAllMediaTotalCount(prev => Math.max(0, prev - 1));
+    setFavorites(prev => removeItemFromArray(prev));
+    setFavoritesTotalCount(prev => Math.max(0, prev - 1));
+  }, []);
 
   // --- UNIFIED LOAD FUNCTION ---
   // We use useCallback to prevent infinite loops when passed to useEffect
@@ -1175,6 +2323,9 @@ function App() {
       </div>
 
       {/* Main Layout */}
+      {/* Upload Button - Top Right (left of theme toggle) */}
+      <UploadButton isVisible={isToggleVisible} />
+
       {/* Theme Toggle - Top Right */}
       <motion.button
         initial={{ opacity: 0, y: 0 }}
@@ -1210,6 +2361,7 @@ function App() {
           className="absolute -inset-6 bg-gradient-to-r from-purple-600/80 via-indigo-600/70 to-violet-600/80 blur-3xl"
         />
         <motion.div
+          whileHover={{ scale: 1.1 }}
           animate={{ rotate: isDark ? 0 : 180 }}
           transition={{ duration: 0.5, type: 'spring' }}
           style={{willChange: 'transform'}}
@@ -1223,41 +2375,66 @@ function App() {
       </motion.button>
 
       {/* Background Progress Bars */}
-      {progressBars.map((bar, index) => (
-        <ProgressBar
-          key={bar.id}
-          id={bar.id}
-          type={bar.type}
-          label={bar.label}
-          isVisible={bar.isVisible}
-          current={bar.current}
-          total={bar.total}
-          index={index}
-          onDismiss={() => {
-            setProgressBars(prev => prev.filter(b => b.id !== bar.id));
-          }}
-        />
-      ))}
+      {progressBars.map((bar, index) => {
+        // Calculate how many bars below this one are expanded
+        const expandedBelowCount = progressBars
+          .slice(0, index)
+          .filter(b => expandedProgressBars.has(b.id))
+          .length;
+        
+        return (
+          <ProgressBar
+            key={bar.id}
+            id={bar.id}
+            type={bar.type}
+            label={bar.label}
+            isVisible={bar.isVisible}
+            current={bar.current}
+            total={bar.total}
+            index={index}
+            expandedBelowCount={expandedBelowCount}
+            onExpandChange={(isExpanded) => {
+              setExpandedProgressBars(prev => {
+                const newSet = new Set(prev);
+                if (isExpanded) {
+                  newSet.add(bar.id);
+                } else {
+                  newSet.delete(bar.id);
+                }
+                return newSet;
+              });
+            }}
+            onDismiss={() => {
+              setProgressBars(prev => prev.filter(b => b.id !== bar.id));
+              setExpandedProgressBars(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(bar.id);
+                return newSet;
+              });
+            }}
+          />
+        );
+      })}
 
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
-      {activeView !== 'albums' && (
-        <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
+      {activeView !== 'albums' && activeView !== 'smart-albums' && activeView !== 'faces' && activeView !== 'things' && activeView !== 'dashboard' && activeView !== 'recently-deleted' && (
+      <SearchBar onSearch={handleSearch} searchValue={searchInputValue} onClearSearch={handleReset} />
       )}
       
       {activeView === 'all' ? (
-        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
+        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} onLocationUpdate={handleLocationUpdate} onDelete={handleDelete} />
       ) : activeView === 'photos' ? (
-        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
+        <PhotoGrid photos={photos} loading={loading} searchQuery={searchQuery} onLoadMore={loadMorePhotos} hasMore={hasMore} totalCount={totalCount} statusCode={statusCode} onFavoriteToggle={handleGlobalFavoriteToggle} onLocationUpdate={handleLocationUpdate} onDelete={handleDelete} />
       ) : activeView === 'videos' ? (
-        <VideoGrid videos={videos} loading={videoLoading} searchQuery={searchQuery} onLoadMore={loadMoreVideos} hasMore={videoHasMore} totalCount={videoTotalCount} statusCode={videoStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
+        <VideoGrid videos={videos} loading={videoLoading} searchQuery={searchQuery} onLoadMore={loadMoreVideos} hasMore={videoHasMore} totalCount={videoTotalCount} statusCode={videoStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} onLocationUpdate={handleLocationUpdate} onDelete={handleDelete} />
       ) : activeView === 'raw' ? (
-        <RawImageGrid rawImages={rawImages} loading={rawLoading} searchQuery={searchQuery} onLoadMore={loadMoreRawImages} hasMore={rawHasMore} totalCount={rawTotalCount} statusCode={rawStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
+        <RawImageGrid rawImages={rawImages} loading={rawLoading} searchQuery={searchQuery} onLoadMore={loadMoreRawImages} hasMore={rawHasMore} totalCount={rawTotalCount} statusCode={rawStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} onLocationUpdate={handleLocationUpdate} onDelete={handleDelete} />
       ) : activeView === 'favorites' ? (
-        <FavoritesGrid favorites={favorites} loading={favoritesLoading} searchQuery={searchQuery} onLoadMore={loadMoreFavorites} hasMore={favoritesHasMore} totalCount={favoritesTotalCount} statusCode={favoritesStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
+        <FavoritesGrid favorites={favorites} loading={favoritesLoading} searchQuery={searchQuery} onLoadMore={loadMoreFavorites} hasMore={favoritesHasMore} totalCount={favoritesTotalCount} statusCode={favoritesStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} onLocationUpdate={handleLocationUpdate} onDelete={handleDelete} />
       ) : activeView === 'map' ? (
         <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
           <div style={{ height: 'calc(100vh - 16rem)' }}>
-            <MapView searchQuery={searchQuery} onFavoriteToggle={handleGlobalFavoriteToggle} />
+            <MapView searchQuery={searchQuery} onFavoriteToggle={handleGlobalFavoriteToggle} onDelete={handleDelete} />
           </div>
         </div>
       ) : activeView === 'albums' ? (
@@ -1269,10 +2446,34 @@ function App() {
           onClearSearch={handleReset}
           updateProgressBar={updateProgressBar}
           removeProgressBar={removeProgressBar}
+          onDelete={handleDelete}
+          startAlbumDownload={startAlbumDownload}
+          hasActiveDownload={hasActiveDownload}
+          cancelAlbumDownload={cancelAlbumDownload}
         />
+      ) : activeView === 'dashboard' ? (
+        <Dashboard 
+          startVaultDownload={startVaultDownload}
+          cancelVaultDownload={cancelVaultDownload}
+          hasActiveVaultDownload={hasActiveVaultDownload()}
+          startAppDataDownload={startAppDataDownload}
+          cancelAppDataDownload={cancelAppDataDownload}
+          hasActiveAppDataDownload={hasActiveAppDataDownload()}
+          startMetadataDownload={startMetadataDownload}
+          cancelMetadataDownload={cancelMetadataDownload}
+          hasActiveMetadataDownload={hasActiveMetadataDownload()}
+        />
+      ) : activeView === 'smart-albums' || activeView === 'faces' || activeView === 'things' || activeView === 'recently-deleted' ? (
+        <ComingSoon feature={activeView} />
       ) : (
-        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} />
+        <AllMediaGrid allMedia={allMedia} loading={allMediaLoading} searchQuery={searchQuery} onLoadMore={loadMoreAllMedia} hasMore={allMediaHasMore} totalCount={allMediaTotalCount} statusCode={allMediaStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} onLocationUpdate={handleLocationUpdate} onDelete={handleDelete} />
       )}
+
+      {/* Insufficient Space Modal */}
+      <InsufficientSpaceModal 
+        isOpen={showInsufficientSpaceModal} 
+        onClose={() => setShowInsufficientSpaceModal(false)} 
+      />
 
       {/* Vignette Effect */}
       <div className="fixed inset-0 pointer-events-none bg-gradient-to-t 

@@ -6,7 +6,7 @@ import { divIcon } from 'leaflet';
 import { motion } from 'framer-motion';
 import { MapPin, Image, Video, Camera, Files } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import ImageViewer from './ImageViewer';
 import VideoViewer from './VideoViewer';
 import RawImageViewer from './RawImageViewer';
@@ -24,7 +24,7 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const MapView = ({searchQuery, onFavoriteToggle}) => {
+const MapView = ({searchQuery, onFavoriteToggle, onDelete}) => {
   const { isDark } = useTheme();
   const [mapPhotos, setMapPhotos] = useState([]); // Store all map points
   const [loading, setLoading] = useState(false);
@@ -32,6 +32,40 @@ const MapView = ({searchQuery, onFavoriteToggle}) => {
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [viewerPhotos, setViewerPhotos] = useState([]);
   const [mediaFilter, setMediaFilter] = useState('all'); // 'all', 'photos', 'videos', 'raw'
+  const prevViewerLengthRef = useRef(viewerPhotos.length);
+  const isDeleting = useRef(false); // Flag to prevent double navigation during delete
+
+  // Detect when a photo is deleted and handle navigation
+  useEffect(() => {
+    // If viewerPhotos length decreased (a photo was deleted)
+    if (prevViewerLengthRef.current > viewerPhotos.length && selectedPhoto) {
+      // Check if current selected photo still exists
+      const stillExists = viewerPhotos.some(item => {
+        const itemType = item.type || 'image';
+        const selectedType = selectedPhoto.type || 'image';
+        return item.id === selectedPhoto.id && itemType === selectedType;
+      });
+
+      if (!stillExists) {
+        // Photo was deleted - navigate appropriately
+        if (viewerPhotos.length === 0) {
+          handleClose();
+        } else if (selectedIndex >= viewerPhotos.length) {
+          // Out of bounds, go to last photo
+          setSelectedIndex(viewerPhotos.length - 1);
+          setSelectedPhoto(viewerPhotos[viewerPhotos.length - 1]);
+        } else if (viewerPhotos[selectedIndex]) {
+          // Stay at same index - next photo moved into this position
+          setSelectedPhoto(viewerPhotos[selectedIndex]);
+        }
+        
+        // Clear the deleting flag after navigation is complete
+        isDeleting.current = false;
+      }
+    }
+    
+    prevViewerLengthRef.current = viewerPhotos.length;
+  }, [viewerPhotos, selectedPhoto, selectedIndex]);
 
   // 1. Fetch Data
   useEffect(() => {
@@ -168,9 +202,15 @@ const MapView = ({searchQuery, onFavoriteToggle}) => {
     setSelectedPhoto(null);
     setSelectedIndex(null);
     setViewerPhotos([]);
+    isDeleting.current = false; // Clear flag when closing
   };
 
   const handleNext = () => {
+    // Don't navigate if we're in the middle of a delete operation
+    if (isDeleting.current) {
+      return;
+    }
+
     if (selectedIndex !== null && selectedIndex < viewerPhotos.length - 1) {
       const nextIndex = selectedIndex + 1;
       setSelectedIndex(nextIndex);
@@ -179,10 +219,41 @@ const MapView = ({searchQuery, onFavoriteToggle}) => {
   };
 
   const handlePrev = () => {
+    // Don't navigate if we're in the middle of a delete operation
+    if (isDeleting.current) {
+      return;
+    }
+
     if (selectedIndex !== null && selectedIndex > 0) {
       const prevIndex = selectedIndex - 1;
       setSelectedIndex(prevIndex);
       setSelectedPhoto(viewerPhotos[prevIndex]);
+    }
+  };
+
+  // Local delete handler to keep map data in sync
+  const handleLocalDelete = (id, type) => {
+    // Set deleting flag to prevent viewer's navigation calls
+    isDeleting.current = true;
+
+    // Calculate the new arrays before any state updates
+    const newMapPhotos = mapPhotos.filter(item => {
+      const itemType = item.type || (type === "image" ? "image" : type === "video" ? "video" : "raw");
+      return !(item.id === id && itemType === type);
+    });
+
+    const newViewerPhotos = viewerPhotos.filter(item => {
+      const itemType = item.type || (type === "image" ? "image" : type === "video" ? "video" : "raw");
+      return !(item.id === id && itemType === type);
+    });
+
+    // Update arrays only - the useEffect will handle navigation
+    setMapPhotos(newMapPhotos);
+    setViewerPhotos(newViewerPhotos);
+
+    // Call parent's global delete handler
+    if (onDelete) {
+      onDelete(id, type);
     }
   };
 
@@ -344,6 +415,7 @@ const MapView = ({searchQuery, onFavoriteToggle}) => {
           currentIndex={selectedIndex}
           totalPhotos={viewerPhotos.length}
           onFavoriteToggle={onFavoriteToggle}
+          onDelete={handleLocalDelete}
         />
       )}
 
@@ -356,6 +428,7 @@ const MapView = ({searchQuery, onFavoriteToggle}) => {
           currentIndex={selectedIndex}
           totalVideos={viewerPhotos.length}
           onFavoriteToggle={onFavoriteToggle}
+          onDelete={handleLocalDelete}
         />
       )}
 
@@ -368,6 +441,7 @@ const MapView = ({searchQuery, onFavoriteToggle}) => {
           currentIndex={selectedIndex}
           totalRawImages={viewerPhotos.length}
           onFavoriteToggle={onFavoriteToggle}
+          onDelete={handleLocalDelete}
         />
       )}
 
@@ -381,6 +455,7 @@ const MapView = ({searchQuery, onFavoriteToggle}) => {
           currentIndex={selectedIndex}
           totalPhotos={viewerPhotos.length}
           onFavoriteToggle={onFavoriteToggle}
+          onDelete={handleLocalDelete}
         />
       )}
     </div>

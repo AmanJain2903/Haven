@@ -8,9 +8,9 @@ import FavoriteButton from './FavoriteButton';
 import ShareButton from './ShareButton';
 import DownloadButton from './DownloadButton';
 import DeleteButton from './DeleteButton';
-import AddToAlbumModal from './AddToAlbumModal';
+import EditLocationModal from './EditLocationModal';
 
-const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos, onFavoriteToggle }) => {
+const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos, onFavoriteToggle, onLocationUpdate, isAddToAlbumModalOpen, setIsAddToAlbumModalOpen, onDelete, isSlideshowActive = false, isSlideshowPaused = false, pauseSlideshow, endSlideshow }) => {
   const { isDark } = useTheme();
   
   const [activeVideo, setActiveVideo] = useState(video);
@@ -18,7 +18,8 @@ const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos
   const [prevIndex, setPrevIndex] = useState(currentIndex);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
-  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
+  const [showComingSoon, setShowComingSoon] = useState(false);
+  const [isEditLocationModalOpen, setIsEditLocationModalOpen] = useState(false);
   
   // Video-specific states
   const videoRef = useRef(null);
@@ -250,6 +251,54 @@ const handleSeekEnd = () => {
     };
   }, []);
 
+  // Auto-hide "Coming Soon" message after 2 seconds
+  useEffect(() => {
+    if (showComingSoon) {
+      const timer = setTimeout(() => {
+        setShowComingSoon(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [showComingSoon]);
+
+  // Slideshow: Auto-play video when active
+  useEffect(() => {
+    if (isSlideshowActive && !isSlideshowPaused && videoRef.current && shouldLoadMedia) {
+      videoRef.current.play().catch(err => console.log("Auto-play failed:", err));
+      setIsPlaying(true);
+    }
+  }, [isSlideshowActive, isSlideshowPaused, shouldLoadMedia]);
+
+  // Slideshow: Handle pause state
+  useEffect(() => {
+    if (isSlideshowActive && videoRef.current) {
+      if (isSlideshowPaused && isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else if (!isSlideshowPaused && !isPlaying) {
+        videoRef.current.play().catch(err => console.log("Resume play failed:", err));
+        setIsPlaying(true);
+      }
+    }
+  }, [isSlideshowPaused, isSlideshowActive]);
+
+  // Slideshow: Handle video end - advance to next or end slideshow
+  const handleVideoEnded = () => {
+    setIsPlaying(false);
+    
+    if (isSlideshowActive && !isSlideshowPaused) {
+      if (currentIndex < totalVideos - 1) {
+        // Move to next media
+        handleNext();
+      } else {
+        // End of slideshow
+        if (endSlideshow) {
+          endSlideshow();
+        }
+      }
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -338,7 +387,7 @@ const handleSeekEnd = () => {
                     className="max-h-[80vh] max-w-full rounded-2xl shadow-2xl"
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}
-                    onEnded={() => setIsPlaying(false)}
+                    onEnded={handleVideoEnded}
                     onSeeking={handleVideoSeeking}
                     onSeeked={handleVideoSeeked}
                     poster={api.getVideoThumbnailUrl(activeVideo.id)}
@@ -638,6 +687,41 @@ const handleSeekEnd = () => {
                 <Info className={`w-5 h-5 ${showMetadata ? 'text-purple-600 dark:text-cyan-400' : 'text-slate-700 dark:text-white/70'}`} />
               </button>
 
+              {/* Slideshow Controls */}
+              {isSlideshowActive && (
+                <>
+                  <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
+                  
+                  {/* Pause/Resume Button */}
+                  <button
+                    onClick={pauseSlideshow}
+                    className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20 
+                             hover:bg-amber-500/30 dark:hover:bg-amber-500/20
+                             hover:border-amber-400/50 dark:hover:border-amber-400/40
+                             transition-all duration-200"
+                    title={isSlideshowPaused ? "Resume Slideshow" : "Pause Slideshow"}
+                  >
+                    {isSlideshowPaused ? (
+                      <Play className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                    ) : (
+                      <Pause className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                    )}
+                  </button>
+
+                  {/* End Slideshow Button */}
+                  <button
+                    onClick={endSlideshow}
+                    className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20 
+                             hover:bg-red-500/30 dark:hover:bg-red-500/20
+                             hover:border-red-400/50 dark:hover:border-red-400/40
+                             transition-all duration-200"
+                    title="End Slideshow"
+                  >
+                    <X className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                  </button>
+                </>
+              )}
+
               <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
 
               {/* Heart Button */}
@@ -665,9 +749,28 @@ const handleSeekEnd = () => {
 
               {/* Delete Button */}
               <DeleteButton 
+                key={`delete-${activeVideo.id}`}
                 id={activeVideo.id}
                 type="video"
                 size="large"
+                onSuccess={(deletedId, deletedType) => {
+                  // First, update global state (remove from arrays, update counts)
+                  if (onDelete) {
+                    onDelete(deletedId, deletedType);
+                  }
+                  
+                  // Then navigate to next file or close viewer
+                  if (currentIndex < totalVideos - 1) {
+                    // Move to next file
+                    onNext();
+                  } else if (currentIndex > 0) {
+                    // No next, move to previous
+                    onPrev();
+                  } else {
+                    // No files left, close viewer
+                    onClose();
+                  }
+                }}
               />
 
               <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
@@ -700,7 +803,7 @@ const handleSeekEnd = () => {
                         <button
                           onClick={() => {
                             setShowMoreOptions(false);
-                            // TODO: Add edit functionality
+                            setShowComingSoon(true);
                           }}
                           className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
                                    text-slate-700 dark:text-white/80 transition-all duration-200"
@@ -728,7 +831,7 @@ const handleSeekEnd = () => {
                         <button
                           onClick={() => {
                             setShowMoreOptions(false);
-                            // TODO: Add/edit location functionality
+                            setIsEditLocationModalOpen(true);
                           }}
                           className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
                                    text-slate-700 dark:text-white/80 transition-all duration-200"
@@ -743,16 +846,44 @@ const handleSeekEnd = () => {
               </div>
             </div>
           </div>
+
+          {/* Coming Soon Overlay */}
+          <AnimatePresence>
+            {showComingSoon && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                style={{ willChange: "opacity, transform" }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.3, type: "spring" }}
+                className="absolute inset-0 flex items-center justify-center z-[200] pointer-events-none"
+              >
+                <div className="glass-panel border-2 border-purple-400/50 dark:border-cyan-400/50 
+                               rounded-2xl px-8 py-4 shadow-2xl backdrop-blur-xl pointer-events-auto">
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 
+                                dark:from-cyan-400 dark:to-teal-400 bg-clip-text text-transparent">
+                    Coming Soon !!
+                  </h2>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Add to Album Modal */}
-        <AddToAlbumModal
-          isOpen={isAddToAlbumModalOpen}
-          onClose={() => setIsAddToAlbumModalOpen(false)}
-          fileId={activeVideo.id}
+        {/* Edit Location Modal */}
+        <EditLocationModal
+          isOpen={isEditLocationModalOpen}
+          onClose={() => setIsEditLocationModalOpen(false)}
           fileType="video"
-          fileName={activeVideo.filename}
+          fileId={activeVideo.id}
+          onSuccess={() => {
+            // Notify parent grid to refresh
+            if (onLocationUpdate) {
+              onLocationUpdate();
+            }
+          }}
         />
+
       </motion.div>
   );
 };

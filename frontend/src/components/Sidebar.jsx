@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
-import { Image, Album, Heart, Users, Box, Map, Settings, Video, Library, Camera, Files, Sparkles} from 'lucide-react';
-import { useState } from 'react';
+import { Image, Album, Heart, Users, Box, Map, Video, Library, Camera, Files, Sparkles, Trash2} from 'lucide-react';
 
 const navigationItems = [
   {id: 'all', icon: Files, label: 'All Media' },
@@ -13,8 +12,8 @@ const navigationItems = [
   { id: 'smart-albums', icon: Sparkles, label: 'Smart Albums' },
   { id: 'faces', icon: Users, label: 'Faces' },
   { id: 'things', icon: Box, label: 'Things' },
+  { id: 'recently-deleted', icon: Trash2, label: 'Recently Deleted' },
   { id: 'dashboard', icon: Library, label: 'Dashboard' },
-  { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
 export default function Sidebar({ activeView = 'all', setActiveView }) {

@@ -157,7 +157,7 @@ class Albums(Base):
 
     # Album Information
     id = Column(Integer, primary_key=True, index=True)
-    album_name = Column(String, index=True, unique=True, nullable=False)
+    album_name = Column(String, index=True, nullable=False)
     album_description = Column(String, nullable=True)
     album_size = Column(BigInteger, nullable=True, server_default=text("0"))
 

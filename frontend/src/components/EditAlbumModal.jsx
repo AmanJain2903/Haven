@@ -135,6 +135,9 @@ export default function EditAlbumModal({ isOpen, onClose, onSuccess, albumId }) 
           exit={{ scale: 0.9, opacity: 0 }}
           transition={{ duration: 0.2 }}
           onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          onKeyUp={(e) => e.stopPropagation()}
+          onKeyPress={(e) => e.stopPropagation()}
           className="relative z-10 w-full max-w-md mx-4 glass-panel rounded-3xl p-8 shadow-2xl border-2 border-purple-400/30 dark:border-cyan-400/30"
         >
           {/* Close Button */}

@@ -2,27 +2,45 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { X, ChevronDown, ChevronUp, Check } from "lucide-react";
 
-export default function ProgressBar({ id, type = "adding", label, isVisible, current, total, onDismiss, index = 0 }) {
+export default function ProgressBar({ 
+  id, 
+  type = "adding", 
+  label, 
+  isVisible, 
+  current, 
+  total, 
+  onDismiss, 
+  index = 0,
+  expandedBelowCount = 0,
+  onExpandChange 
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
   const isComplete = current === total && total > 0 && current > 0;
 
-  // Generate appropriate labels based on type
-  const getLabels = () => {
-    if (type === "deleting") {
-      return {
-        inProgress: label || "Deleting album...",
-        complete: "Album deleted successfully!"
-      };
+  // Show progress bar for both adding and downloading
+  const showProgressBar = type === "adding" || type === "downloading";
+  
+  // Deleting bars should not expand
+  const canExpand = type !== "deleting";
+  
+  // Handle expansion state changes
+  const handleExpandChange = (expanded) => {
+    setIsExpanded(expanded);
+    if (onExpandChange) {
+      onExpandChange(expanded);
     }
-    return {
-      inProgress: label || "Adding files...",
-      complete: "Files added successfully!"
-    };
   };
-
-  const labels = getLabels();
+  
+  // Use the provided label or generate default based on type
+  const displayLabel = label || (
+    type === "deleting" 
+      ? "Deleting album..." 
+      : type === "downloading" 
+      ? "Preparing download..." 
+      : "Adding files..."
+  );
 
   if (!isVisible) return null;
 
@@ -34,10 +52,10 @@ export default function ProgressBar({ id, type = "adding", label, isVisible, cur
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 400, opacity: 0 }}
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          style={{ bottom: `${20 + index * 80}px` }}
-          className="fixed right-6 z-[300] pointer-events-auto"
-          onMouseEnter={() => setIsExpanded(true)}
-          onMouseLeave={() => setIsExpanded(false)}
+          style={{ bottom: `${20 + index * 80 + expandedBelowCount * 50}px` }}
+          className={`fixed right-6 pointer-events-auto ${isExpanded ? 'z-20' : 'z-10'}`}
+          onMouseEnter={() => canExpand && handleExpandChange(true)}
+          onMouseLeave={() => canExpand && handleExpandChange(false)}
         >
           <div className="glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl rounded-xl">
             {/* Collapsed View */}
@@ -45,13 +63,8 @@ export default function ProgressBar({ id, type = "adding", label, isVisible, cur
               <div className="px-4 py-2.5 flex items-center gap-3 min-w-[300px]">
                 <div className="flex-1">
                   <div className="text-sm font-medium text-slate-700 dark:text-white">
-                    {isComplete ? labels.complete : labels.inProgress}
+                    {displayLabel}
                   </div>
-                  {type === "adding" && (
-                    <div className="text-xs text-purple-600 dark:text-cyan-400 font-semibold mt-0.5">
-                      {percentage}%
-                    </div>
-                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   {type === "deleting" && !isComplete && (
@@ -62,7 +75,16 @@ export default function ProgressBar({ id, type = "adding", label, isVisible, cur
                       <Check className="w-3 h-3 text-white" />
                     </div>
                   )}
-                  <ChevronUp className="w-4 h-4 text-slate-600 dark:text-white/70" />
+                  {showProgressBar && !isComplete && (
+                    <div className="w-5 h-5 border-2 border-purple-600/30 dark:border-cyan-400/30 border-t-purple-600 dark:border-t-cyan-400 rounded-full animate-spin" />
+                  )}
+                  {showProgressBar && isComplete && (
+                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                      <Check className="w-3 h-3 text-white" />
+                    </div>
+                  )}
+                  {/* Always reserve space for chevron to maintain alignment */}
+                  <ChevronUp className={`w-4 h-4 text-slate-600 dark:text-white/70 ${!canExpand ? 'invisible' : ''}`} />
                   {isComplete && (
                     <button
                       onClick={onDismiss}
@@ -82,9 +104,9 @@ export default function ProgressBar({ id, type = "adding", label, isVisible, cur
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex-1">
                     <div className="text-sm font-semibold text-slate-700 dark:text-white">
-                      {isComplete ? labels.complete : labels.inProgress}
+                      {displayLabel}
                     </div>
-                    {type === "adding" && (
+                    {showProgressBar && (
                       <div className="text-xs text-slate-600 dark:text-white/60 mt-0.5">
                         {current} of {total} files
                       </div>
@@ -113,7 +135,7 @@ export default function ProgressBar({ id, type = "adding", label, isVisible, cur
                 </div>
 
                 {/* Progress Bar */}
-                {type === "adding" && (
+                {showProgressBar && (
                   <>
                     <div className="relative w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                       <motion.div
@@ -123,7 +145,7 @@ export default function ProgressBar({ id, type = "adding", label, isVisible, cur
                         className={`h-full rounded-full ${
                           isComplete
                             ? 'bg-green-500'
-                            : 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-400 dark:to-teal-400'
+                            : 'bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-cyan-400 dark:to-teal-400'
                         }`}
                       />
                     </div>

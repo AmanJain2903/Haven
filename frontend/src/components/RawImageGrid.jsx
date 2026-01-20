@@ -7,6 +7,7 @@ import { Virtuoso } from "react-virtuoso";
 import { processTimelineData } from "../utils/timelineUtils";
 
 import RawImageViewer from "./RawImageViewer";
+import AddToAlbumModal from "./AddToAlbumModal";
 
 import { api } from "../api";
 
@@ -15,7 +16,7 @@ import ShareButton from "./ShareButton";
 import DownloadButton from "./DownloadButton";
 import DeleteButton from "./DeleteButton";
 
-function RawImageCard({ rawImage, index, onClick, onFavoriteToggle }) {
+function RawImageCard({ rawImage, index, onClick, onFavoriteToggle, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -157,6 +158,7 @@ ${isHovered ? "opacity-100" : "opacity-0"}
               id={rawImage.id}
               type="raw"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -173,9 +175,12 @@ export default function RawImageGrid({
   hasMore=true,
   totalCount,
   statusCode,
-  onFavoriteToggle
+  onFavoriteToggle,
+  onLocationUpdate,
+  onDelete
 }) {
   const [selectedRawImage, setSelectedRawImage] = useState(null);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
 
   const virtuosoRef = useRef(null);
 
@@ -404,6 +409,7 @@ bg-clip-text text-transparent mb-2"
                       index={i}
                       onClick={() => handleRawImageClick(rawImage)}
                       onFavoriteToggle={onFavoriteToggle}
+                      onDelete={onDelete}
                     />
                   </div>
                 ))}
@@ -432,6 +438,21 @@ bg-clip-text text-transparent mb-2"
           currentIndex={getSortedIndex(selectedRawImage)}
           totalRawImages={totalCount}
           onFavoriteToggle={onFavoriteToggle}
+          onLocationUpdate={onLocationUpdate}
+          onDelete={onDelete}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+        />
+      )}
+
+      {/* AddToAlbumModal */}
+      {selectedRawImage && (
+        <AddToAlbumModal
+          isOpen={isAddToAlbumModalOpen}
+          onClose={() => setIsAddToAlbumModalOpen(false)}
+          fileId={selectedRawImage.id}
+          fileType="raw"
+          fileName={selectedRawImage.filename}
         />
       )}
     </div>

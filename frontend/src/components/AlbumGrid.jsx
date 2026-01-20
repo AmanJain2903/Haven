@@ -6,6 +6,7 @@ import { processTimelineData } from "../utils/timelineUtils";
 import ImageViewer from "./ImageViewer";
 import VideoViewer from "./VideoViewer";
 import RawImageViewer from "./RawImageViewer";
+import AddToAlbumModal from "./AddToAlbumModal";
 import { api } from "../api";
 import formatTime from "../utils/timeUtils";
 import { formatFileSize } from "../utils/fileUtils";
@@ -16,12 +17,12 @@ import DeleteButton from "./DeleteButton";
 import EditAlbumModal from "./EditAlbumModal";
 import DeleteAlbumModal from "./DeleteAlbumModal";
 import AddFilesToAlbumModal from "./AddFilesToAlbumModal";
-import { Download, Edit, Trash2, Plus, Image as ImageIcon, ArrowLeft, Folder, HardDrive, Clock, RefreshCw, MapPin, Video, FileImage, Info, ImagePlus, X, Frame } from "lucide-react";
+import { Download, Edit, Trash2, Plus, Image as ImageIcon, ArrowLeft, Folder, HardDrive, Clock, RefreshCw, MapPin, Video, FileImage, Info, ImagePlus, X, Frame, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import SearchBar from "./SearchBar";
 
 // PhotoCard component for images
-function PhotoCard({ photo, index, onClick, onFavoriteToggle, onRemove, onSetCover, isCurrentCover }) {
+function PhotoCard({ photo, index, onClick, onFavoriteToggle, onRemove, onSetCover, isCurrentCover, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
 
   const handleRemoveClick = (e) => {
@@ -75,6 +76,7 @@ function PhotoCard({ photo, index, onClick, onFavoriteToggle, onRemove, onSetCov
               className="p-1.5 rounded-full bg-red-500/90 hover:bg-red-600 
                        border-2 border-white/30 shadow-lg
                        transition-all duration-200 hover:scale-110"
+                       title="Remove from album"
             >
               <X className="w-4 h-4 text-white" strokeWidth={2.5} />
             </button>
@@ -177,6 +179,7 @@ function PhotoCard({ photo, index, onClick, onFavoriteToggle, onRemove, onSetCov
               id={photo.id}
               type="image"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -186,7 +189,7 @@ function PhotoCard({ photo, index, onClick, onFavoriteToggle, onRemove, onSetCov
 }
 
 // VideoCard component for videos
-function VideoCard({ video, index, onClick, onFavoriteToggle, onRemove, onSetCover, isCurrentCover }) {
+function VideoCard({ video, index, onClick, onFavoriteToggle, onRemove, onSetCover, isCurrentCover, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewRef = useRef(null);
@@ -276,6 +279,7 @@ function VideoCard({ video, index, onClick, onFavoriteToggle, onRemove, onSetCov
               className="p-1.5 rounded-full bg-red-500/90 hover:bg-red-600 
                        border-2 border-white/30 shadow-lg
                        transition-all duration-200 hover:scale-110"
+                       title="Remove from album"
             >
               <X className="w-4 h-4 text-white" strokeWidth={2.5} />
             </button>
@@ -417,6 +421,7 @@ function VideoCard({ video, index, onClick, onFavoriteToggle, onRemove, onSetCov
               id={video.id}
               type="video"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -426,7 +431,7 @@ function VideoCard({ video, index, onClick, onFavoriteToggle, onRemove, onSetCov
 }
 
 // RawImageCard component for raw images
-function RawImageCard({ rawImage, index, onClick, onFavoriteToggle, onRemove, onSetCover, isCurrentCover }) {
+function RawImageCard({ rawImage, index, onClick, onFavoriteToggle, onRemove, onSetCover, isCurrentCover, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
 
   const handleRemoveClick = (e) => {
@@ -480,6 +485,7 @@ function RawImageCard({ rawImage, index, onClick, onFavoriteToggle, onRemove, on
               className="p-1.5 rounded-full bg-red-500/90 hover:bg-red-600 
                        border-2 border-white/30 shadow-lg
                        transition-all duration-200 hover:scale-110"
+              title="Remove from album"
             >
               <X className="w-4 h-4 text-white" strokeWidth={2.5} />
             </button>
@@ -589,6 +595,7 @@ function RawImageCard({ rawImage, index, onClick, onFavoriteToggle, onRemove, on
               id={rawImage.id}
               type="raw"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -788,88 +795,7 @@ function ChooseAlbumCoverModal({ isOpen, onClose, albumId, albumName, currentCov
   );
 }
 
-// Confirmation Modal Component
-function RemoveFromAlbumModal({ isOpen, onClose, onConfirm, fileName, albumName, loading }) {
-  if (!isOpen) return null;
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = 'unset';
-      };
-    }
-  }, [isOpen]);
-
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-          onClick={onClose}
-        >
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            transition={{ type: "spring", duration: 0.3 }}
-            onClick={(e) => e.stopPropagation()}
-            className="relative glass-panel rounded-2xl p-6 max-w-md w-full border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl"
-          >
-            <div className="flex flex-col items-center text-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center">
-                <Trash2 className="w-8 h-8 text-red-600 dark:text-red-400" />
-              </div>
-
-              <div>
-                <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
-                  Remove from Album?
-                </h3>
-                <p className="text-slate-600 dark:text-white/70">
-                  Remove <span className="font-semibold text-purple-600 dark:text-cyan-400">{fileName}</span> from{" "}
-                  <span className="font-semibold text-purple-600 dark:text-cyan-400">{albumName}</span>?
-                </p>
-              </div>
-
-              <div className="flex gap-3 w-full mt-2">
-                <button
-                  onClick={onClose}
-                  disabled={loading}
-                  className="flex-1 px-4 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600
-                           text-slate-700 dark:text-white/80 font-medium
-                           hover:bg-slate-100 dark:hover:bg-slate-700
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-all duration-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={onConfirm}
-                  disabled={loading}
-                  className="flex-1 px-4 py-2.5 rounded-xl
-                           bg-red-500 hover:bg-red-600
-                           text-white font-medium
-                           hover:shadow-lg hover:scale-105
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-all duration-200"
-                >
-                  {loading ? "Removing..." : "Remove"}
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-}
-
-export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumUpdate, onAlbumDelete, searchQuery: externalSearchQuery = "", searchInputValue: externalSearchInputValue = "", onSearch, onClearSearch, updateProgressBar, removeProgressBar }) {
+export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumUpdate, onAlbumDelete, searchQuery: externalSearchQuery = "", searchInputValue: externalSearchInputValue = "", onSearch, onClearSearch, updateProgressBar, removeProgressBar, onDelete, startAlbumDownload, hasActiveDownload, cancelAlbumDownload }) {
   const [album, setAlbum] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -880,16 +806,16 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const virtuosoRef = useRef(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isInfoHovered, setIsInfoHovered] = useState(false);
-  const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
-  const [removingItem, setRemovingItem] = useState(null);
-  const [isRemoving, setIsRemoving] = useState(false);
   const [isChooseCoverModalOpen, setIsChooseCoverModalOpen] = useState(false);
   const [currentCover, setCurrentCover] = useState({ type: null, id: null });
   const [isAddFilesModalOpen, setIsAddFilesModalOpen] = useState(false);
+  const [isSlideshowActive, setIsSlideshowActive] = useState(false);
+  const [isSlideshowPaused, setIsSlideshowPaused] = useState(false);
 
   const LIMIT = 500;
 
@@ -914,6 +840,28 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
         return item;
       })
     );
+  };
+
+  // Local delete handler to keep album timeline in sync
+  const handleLocalDelete = (id, type) => {
+    // First, call parent's global delete handler
+    if (onDelete) {
+      onDelete(id, type);
+    }
+
+    // Then update local timeline state (remove deleted item)
+    setTimeline(prev =>
+      (prev || []).filter(item => {
+        const itemType = item.type || (type === "image" ? "image" : type === "video" ? "video" : "raw");
+        return !(item.id === id && itemType === type);
+      })
+    );
+
+    // Update local total count
+    setTotalCount(prev => Math.max(0, prev - 1));
+
+    // Reload album metadata to get updated counts
+    loadAlbum();
   };
 
   // Load album data when albumId changes
@@ -1003,6 +951,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
       } else {
         setTimeline(prev => [...prev, ...(response.timeline || [])]);
       }
+      // Get total count from response headers
       setTotalCount(response.total || 0);
       setHasMore(response.timeline && response.timeline.length === LIMIT);
     } catch (err) {
@@ -1157,24 +1106,9 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
     onClose();
   };
 
-  const handleRemoveClick = (fileId, fileType) => {
-    const item = timeline.find(m => m.id === fileId && m.type === fileType);
-    if (item) {
-      setRemovingItem({
-        id: fileId,
-        type: fileType,
-        name: item.filename
-      });
-      setIsRemoveModalOpen(true);
-    }
-  };
-
-  const handleConfirmRemove = async () => {
-    if (!removingItem) return;
-
-    setIsRemoving(true);
+  const handleRemoveClick = async (fileId, fileType) => {
     try {
-      await api.removeFromAlbum(albumId, removingItem.type, removingItem.id);
+      await api.removeFromAlbum(albumId, fileType, fileId);
       
       // Reload album metadata (for updated counts)
       await loadAlbum();
@@ -1195,24 +1129,12 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
       } else {
         await loadTimeline(0);
       }
-      
-      // Close the modal
-      setIsRemoveModalOpen(false);
-      setRemovingItem(null);
     } catch (err) {
       console.error("Error removing from album:", err);
       alert("Failed to remove file from album. Please try again.");
-    } finally {
-      setIsRemoving(false);
     }
   };
 
-  const handleRemoveModalClose = () => {
-    if (!isRemoving) {
-      setIsRemoveModalOpen(false);
-      setRemovingItem(null);
-    }
-  };
 
   const handleSetCover = async (fileId, fileType) => {
     try {
@@ -1240,6 +1162,24 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
 
   const handleChooseCoverClick = () => {
     setIsChooseCoverModalOpen(true);
+  };
+
+  // Slideshow controls
+  const startSlideshow = () => {
+    if (sortedMedia.length === 0) return;
+    setIsSlideshowActive(true);
+    setIsSlideshowPaused(false);
+    setSelectedMedia(sortedMedia[0]);
+  };
+
+  const pauseSlideshow = () => {
+    setIsSlideshowPaused(!isSlideshowPaused);
+  };
+
+  const endSlideshow = () => {
+    setIsSlideshowActive(false);
+    setIsSlideshowPaused(false);
+    setSelectedMedia(null);
   };
 
   const isCurrentCover = (fileId, fileType) => {
@@ -1449,17 +1389,50 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
                   </motion.div>
                 )}
               </div>
+
+              {/* Slideshow Button */}
+              <div className="relative group">
+                <button
+                  onClick={startSlideshow}
+                  disabled={sortedMedia.length === 0}
+                  className={`p-1.5 rounded-full transition-colors ${
+                    sortedMedia.length === 0
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:bg-teal-100 dark:hover:bg-teal-900/30'
+                  }`}
+                  aria-label="Start slideshow"
+                >
+                  <Play className="w-5 h-5 text-purple-600 dark:text-cyan-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" />
+                  <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 px-2 py-1 text-xs font-medium text-white bg-slate-900 dark:bg-slate-700 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                    Start Slideshow
+                  </span>
+                </button>
+              </div>
+
               
               {/* Download Button */}
               <div className="relative group">
                 <button
-                  onClick={() => console.log("Download album:", albumId)}
+                  onClick={() => {
+                    const isDownloading = hasActiveDownload ? hasActiveDownload(albumId) : false;
+                    if (isDownloading) {
+                      cancelAlbumDownload && cancelAlbumDownload(albumId);
+                      return;
+                    }
+                    if (startAlbumDownload && album) {
+                      startAlbumDownload(albumId, album.album_name);
+                    }
+                  }}
                   className="p-1.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors"
                   aria-label="Download album"
                 >
-                  <Download className="w-5 h-5 text-purple-600 dark:text-cyan-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" />
+                  {(hasActiveDownload && hasActiveDownload(albumId)) ? (
+                    <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 group-hover:text-red-700 dark:group-hover:text-red-300 transition-colors" />
+                  ) : (
+                    <Download className="w-5 h-5 text-purple-600 dark:text-cyan-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" />
+                  )}
                   <span className="absolute left-1/2 -translate-x-1/2 top-full mt-2 px-2 py-1 text-xs font-medium text-white bg-slate-900 dark:bg-slate-700 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                    Download Album
+                    {(hasActiveDownload && hasActiveDownload(albumId)) ? 'Cancel Download' : 'Download Album'}
                   </span>
                 </button>
               </div>
@@ -1526,12 +1499,12 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
                 {album.album_description}
               </p>
             )}
-            {album.album_total_count > 0 && (
+            {totalCount > 0 && (
               <p className="text-slate-600 dark:text-white/50 text-sm mt-2">
                 <span className="font-semibold text-purple-600 dark:text-cyan-400">
-              {album.album_total_count}
+              {totalCount}
             </span>{" "}
-                {album.album_total_count === 1 ? "item" : "items"} in {album.album_name}
+                {totalCount === 1 ? "item" : "items"} {searchQuery ? "found" : `in ${album.album_name}`}
               </p>
             )}
           </div>
@@ -1632,6 +1605,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
                             onRemove={handleRemoveClick}
                             onSetCover={handleSetCover}
                             isCurrentCover={isCurrentCover(media.id, "image")}
+                            onDelete={handleLocalDelete}
                           />
                         ) : media.type === "video" ? (
                           <VideoCard
@@ -1642,6 +1616,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
                             onRemove={handleRemoveClick}
                             onSetCover={handleSetCover}
                             isCurrentCover={isCurrentCover(media.id, "video")}
+                            onDelete={handleLocalDelete}
                           />
                         ) : media.type === "raw" ? (
                           <RawImageCard
@@ -1652,6 +1627,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
                             onRemove={handleRemoveClick}
                             onSetCover={handleSetCover}
                             isCurrentCover={isCurrentCover(media.id, "raw")}
+                            onDelete={handleLocalDelete}
                           />
                         ) : null}
                       </div>
@@ -1673,36 +1649,68 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
       {selectedMedia && selectedMedia.type === "image" && (
         <ImageViewer
           photo={selectedMedia}
-          onClose={handleClose}
+          onClose={isSlideshowActive ? endSlideshow : handleClose}
           onNext={handleNext}
           onPrev={handlePrev}
           currentIndex={getSortedIndex(selectedMedia)}
           totalPhotos={totalCount}
           onFavoriteToggle={handleLocalFavoriteToggle}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+          onDelete={handleLocalDelete}
+          isSlideshowActive={isSlideshowActive}
+          isSlideshowPaused={isSlideshowPaused}
+          pauseSlideshow={pauseSlideshow}
+          endSlideshow={endSlideshow}
         />
       )}
 
       {selectedMedia && selectedMedia.type === "video" && (
         <VideoViewer
           video={selectedMedia}
-          onClose={handleClose}
+          onClose={isSlideshowActive ? endSlideshow : handleClose}
           onNext={handleNext}
           onPrev={handlePrev}
           currentIndex={getSortedIndex(selectedMedia)}
           totalVideos={totalCount}
           onFavoriteToggle={handleLocalFavoriteToggle}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+          onDelete={handleLocalDelete}
+          isSlideshowActive={isSlideshowActive}
+          isSlideshowPaused={isSlideshowPaused}
+          pauseSlideshow={pauseSlideshow}
+          endSlideshow={endSlideshow}
         />
       )}
 
       {selectedMedia && selectedMedia.type === "raw" && (
         <RawImageViewer
           rawImage={selectedMedia}
-          onClose={handleClose}
+          onClose={isSlideshowActive ? endSlideshow : handleClose}
           onNext={handleNext}
           onPrev={handlePrev}
           currentIndex={getSortedIndex(selectedMedia)}
           totalRawImages={totalCount}
           onFavoriteToggle={handleLocalFavoriteToggle}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          onDelete={handleLocalDelete}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+          isSlideshowActive={isSlideshowActive}
+          isSlideshowPaused={isSlideshowPaused}
+          pauseSlideshow={pauseSlideshow}
+          endSlideshow={endSlideshow}
+        />
+      )}
+
+      {/* Shared AddToAlbumModal - persists across viewer changes */}
+      {selectedMedia && (
+        <AddToAlbumModal
+          isOpen={isAddToAlbumModalOpen}
+          onClose={() => setIsAddToAlbumModalOpen(false)}
+          fileId={selectedMedia.id}
+          fileType={selectedMedia.type}
+          fileName={selectedMedia.filename || selectedMedia.name}
         />
       )}
 
@@ -1723,16 +1731,8 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
         albumName={album.album_name}
         updateProgressBar={updateProgressBar}
         removeProgressBar={removeProgressBar}
-      />
-
-      {/* Remove From Album Modal */}
-      <RemoveFromAlbumModal
-        isOpen={isRemoveModalOpen}
-        onClose={handleRemoveModalClose}
-        onConfirm={handleConfirmRemove}
-        fileName={removingItem?.name || ""}
-        albumName={album?.album_name || ""}
-        loading={isRemoving}
+        hasActiveDownload={hasActiveDownload}
+        cancelAlbumDownload={cancelAlbumDownload}
       />
 
       {/* Choose Album Cover Modal */}

@@ -1,4 +1,4 @@
-import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock, MoreVertical, Play, Edit, RotateCcw, RotateCw, FolderPlus, FileType, Focus } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock, MoreVertical, Play, Pause, Edit, RotateCcw, RotateCw, FolderPlus, FileType, Focus } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../contexts/ThemeContext';
@@ -8,9 +8,9 @@ import FavoriteButton from './FavoriteButton';
 import ShareButton from './ShareButton';
 import DownloadButton from './DownloadButton';
 import DeleteButton from './DeleteButton';
-import AddToAlbumModal from './AddToAlbumModal';
+import EditLocationModal from './EditLocationModal';
 
-const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, totalRawImages, onFavoriteToggle }) => {
+const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, totalRawImages, onFavoriteToggle, onLocationUpdate, isAddToAlbumModalOpen, setIsAddToAlbumModalOpen, onDelete, isSlideshowActive = false, isSlideshowPaused = false, pauseSlideshow, endSlideshow }) => {
   const { isDark } = useTheme();
   
   const [activeRawImage, setActiveRawImage] = useState(rawImage);
@@ -19,13 +19,15 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
   const [prevIndex, setPrevIndex] = useState(currentIndex);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
-  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [shouldLoadMedia, setShouldLoadMedia] = useState(false);
+  const [rotation, setRotation] = useState(0);
+  const [showComingSoon, setShowComingSoon] = useState(false);
+  const [isEditLocationModalOpen, setIsEditLocationModalOpen] = useState(false);
   
   // Refs for cancelling in-flight image loads
   const thumbnailRef = useRef(null);
@@ -62,7 +64,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
       }
     };
   }, [rawImage]);
-
+  
   // --- FETCH DETAILS LOGIC ---
   useEffect(() => {
     if (!rawImage) return;
@@ -101,6 +103,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
       setImageLoaded(false);
       setScale(1);
       setPosition({ x: 0, y: 0 });
+      setRotation(0);
     }
   }, [currentIndex, prevIndex]);
 
@@ -114,6 +117,19 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
     if (hasPrev) {
       onPrev();
     }
+  };
+
+  const handleRotateLeft = () => {
+    setRotation(prev => prev - 90);
+  };
+
+  const handleRotateRight = () => {
+    setRotation(prev => prev + 90);
+  };
+
+  // Normalize rotation to 0-359 range to check if image is in original orientation
+  const getNormalizedRotation = () => {
+    return ((rotation % 360) + 360) % 360;
   };
 
   // Zoom functions
@@ -132,6 +148,10 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
   const handleResetZoom = () => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
+    // Only reset rotation if image is not already in original orientation
+    if (getNormalizedRotation() !== 0) {
+      setRotation(0);
+    }
   };
 
   // Mouse wheel zoom
@@ -198,6 +218,35 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
       document.documentElement.style.overflow = originalHtmlOverflow;
     };
   }, []);
+
+  // Auto-hide "Coming Soon" message after 2 seconds
+  useEffect(() => {
+    if (showComingSoon) {
+      const timer = setTimeout(() => {
+        setShowComingSoon(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [showComingSoon]);
+
+  // Slideshow auto-advance for raw images
+  useEffect(() => {
+    if (!isSlideshowActive || isSlideshowPaused || !imageLoaded) return;
+
+    const timer = setTimeout(() => {
+      if (currentIndex < totalRawImages - 1) {
+        // Move to next image
+        handleNext();
+      } else {
+        // End of slideshow
+        if (endSlideshow) {
+          endSlideshow();
+        }
+      }
+    }, 4000); // 4 seconds per image
+
+    return () => clearTimeout(timer);
+  }, [isSlideshowActive, isSlideshowPaused, imageLoaded, currentIndex, totalRawImages]);
 
   return (
     <motion.div 
@@ -281,7 +330,11 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
             onDoubleClick={handleDoubleClick}
             style={{ cursor: scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
           >
-            <div className="relative glass-panel rounded-3xl p-4 border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl overflow-hidden">
+            <motion.div 
+              className="relative glass-panel rounded-3xl p-4 border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl overflow-hidden"
+              animate={{ rotate: rotation }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            >
               
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div 
@@ -311,22 +364,22 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                   
                   {/* Preview image (JPEG converted) */}
                   {shouldLoadMedia && (
-                    <motion.img 
+                  <motion.img 
                       ref={previewImageRef}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: imageLoaded ? 1 : 0 }}
-                      transition={{ duration: 0.3 }}
-                      src={api.getRawPreviewUrl(activeRawImage.id)}
-                      alt={activeRawImage.filename}
-                      onLoad={() => setImageLoaded(true)}
-                      className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
-                      style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
-                      draggable={false}
-                    />
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: imageLoaded ? 1 : 0 }}
+                    transition={{ duration: 0.3 }}
+                    src={api.getRawPreviewUrl(activeRawImage.id)}
+                    alt={activeRawImage.filename}
+                    onLoad={() => setImageLoaded(true)}
+                    className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
+                    style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
+                    draggable={false}
+                  />
                   )}
                 </motion.div>
               </AnimatePresence>
-            </div>
+            </motion.div>
           </div>
 
           {/* --- Metadata Overlay (Bottom) --- */}
@@ -538,8 +591,8 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
 
             {/* Center Column */}
             <div className="flex flex-col items-center gap-3">
-              {/* Reset Zoom Button - Above Toolbar */}
-              {scale > 1 && (
+              {/* Reset Button - Above Toolbar */}
+              {(scale > 1 || getNormalizedRotation() !== 0) && (
                 <button
                   onClick={handleResetZoom}
                   className="p-2 px-4 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
@@ -549,7 +602,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                            hover:scale-110
                            shadow-lg transition-all duration-200"
                 >
-                  <span className="text-xs font-bold">Reset Zoom</span>
+                  <span className="text-xs font-bold">Reset View</span>
                 </button>
               )}
 
@@ -570,6 +623,41 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
               >
                 <Info className={`w-5 h-5 ${showMetadata ? 'text-purple-600 dark:text-cyan-400' : 'text-slate-700 dark:text-white/70'}`} />
               </button>
+
+              {/* Slideshow Controls */}
+              {isSlideshowActive && (
+                <>
+                  <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
+                  
+                  {/* Pause/Resume Button */}
+                  <button
+                    onClick={pauseSlideshow}
+                    className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20 
+                             hover:bg-amber-500/30 dark:hover:bg-amber-500/20
+                             hover:border-amber-400/50 dark:hover:border-amber-400/40
+                             transition-all duration-200"
+                    title={isSlideshowPaused ? "Resume Slideshow" : "Pause Slideshow"}
+                  >
+                    {isSlideshowPaused ? (
+                      <Play className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                    ) : (
+                      <Pause className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                    )}
+                  </button>
+
+                  {/* End Slideshow Button */}
+                  <button
+                    onClick={endSlideshow}
+                    className="p-2.5 rounded-full bg-white/10 dark:bg-white/5 border border-white/20 
+                             hover:bg-red-500/30 dark:hover:bg-red-500/20
+                             hover:border-red-400/50 dark:hover:border-red-400/40
+                             transition-all duration-200"
+                    title="End Slideshow"
+                  >
+                    <X className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                  </button>
+                </>
+              )}
 
               <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
 
@@ -598,9 +686,28 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
 
               {/* Delete Button */}
               <DeleteButton 
+                key={`delete-${activeRawImage.id}`}
                 id={activeRawImage.id}
                 type="raw"
                 size="large"
+                onSuccess={(deletedId, deletedType) => {
+                  // First, update global state (remove from arrays, update counts)
+                  if (onDelete) {
+                    onDelete(deletedId, deletedType);
+                  }
+                  
+                  // Then navigate to next file or close viewer
+                  if (currentIndex < totalRawImages - 1) {
+                    // Move to next file
+                    onNext();
+                  } else if (currentIndex > 0) {
+                    // No next, move to previous
+                    onPrev();
+                  } else {
+                    // No files left, close viewer
+                    onClose();
+                  }
+                }}
               />
 
               <div className="w-px h-6 bg-purple-400/20 dark:bg-cyan-400/20" />
@@ -629,24 +736,11 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                                  rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden z-50 min-w-[200px]"
                     >
                       <div className="py-2">
-                        {/* Slideshow */}
-                        <button
-                          onClick={() => {
-                            setShowMoreOptions(false);
-                            // TODO: Add slideshow functionality
-                          }}
-                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
-                                   text-slate-700 dark:text-white/80 transition-all duration-200"
-                        >
-                          <Play className="w-4 h-4" />
-                          <span className="text-sm font-medium">Slideshow</span>
-                        </button>
-
                         {/* Edit */}
                         <button
                           onClick={() => {
                             setShowMoreOptions(false);
-                            // TODO: Add edit functionality
+                            setShowComingSoon(true);
                           }}
                           className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
                                    text-slate-700 dark:text-white/80 transition-all duration-200"
@@ -660,8 +754,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                         {/* Rotate Left */}
                         <button
                           onClick={() => {
-                            setShowMoreOptions(false);
-                            // TODO: Add rotate left functionality
+                            handleRotateLeft();
                           }}
                           className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
                                    text-slate-700 dark:text-white/80 transition-all duration-200"
@@ -673,8 +766,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                         {/* Rotate Right */}
                         <button
                           onClick={() => {
-                            setShowMoreOptions(false);
-                            // TODO: Add rotate right functionality
+                            handleRotateRight();
                           }}
                           className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
                                    text-slate-700 dark:text-white/80 transition-all duration-200"
@@ -702,7 +794,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                         <button
                           onClick={() => {
                             setShowMoreOptions(false);
-                            // TODO: Add/edit location functionality
+                            setIsEditLocationModalOpen(true);
                           }}
                           className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
                                    text-slate-700 dark:text-white/80 transition-all duration-200"
@@ -732,16 +824,44 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
               <ZoomIn className="w-5 h-5" />
             </button>
           </div>
+
+          {/* Coming Soon Overlay */}
+          <AnimatePresence>
+            {showComingSoon && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                style={{ willChange: "opacity, transform" }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.3, type: "spring" }}
+                className="absolute inset-0 flex items-center justify-center z-[200] pointer-events-none"
+              >
+                <div className="glass-panel border-2 border-purple-400/50 dark:border-cyan-400/50 
+                               rounded-2xl px-8 py-4 shadow-2xl backdrop-blur-xl pointer-events-auto">
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 
+                                dark:from-cyan-400 dark:to-teal-400 bg-clip-text text-transparent">
+                    Coming Soon !!
+                  </h2>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Add to Album Modal */}
-        <AddToAlbumModal
-          isOpen={isAddToAlbumModalOpen}
-          onClose={() => setIsAddToAlbumModalOpen(false)}
-          fileId={activeRawImage.id}
+        {/* Edit Location Modal */}
+        <EditLocationModal
+          isOpen={isEditLocationModalOpen}
+          onClose={() => setIsEditLocationModalOpen(false)}
           fileType="raw"
-          fileName={activeRawImage.filename}
+          fileId={activeRawImage.id}
+          onSuccess={() => {
+            // Notify parent grid to refresh
+            if (onLocationUpdate) {
+              onLocationUpdate();
+            }
+          }}
         />
+
       </motion.div>
   );
 };
