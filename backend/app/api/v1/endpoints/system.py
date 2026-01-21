@@ -5,12 +5,22 @@ from app.core.database import get_db, engine
 from app import models
 from app.core.config import settings
 from app import schemas
+import shutil
+from pathlib import Path
 
 backend_url = settings.HOST_URL
 
 router = APIRouter()
 
 REQUIRED_FOLDERS = ["images", "videos", "raw"]
+
+# GET PROJECT VERSION
+@router.get("/version", response_model=str)
+def get_project_version():
+    """
+    Gets the project version from the settings.
+    """
+    return settings.PROJECT_VERSION
 
 # 1. GET CONFIG (Read settings)
 @router.get("/config/{key}", response_model=schemas.SystemConfigResponse)
@@ -96,3 +106,27 @@ def check_system_status(db: Session = Depends(get_db)):
             "is_connected": False,
             "message": "Storage disconnected. Please connect the HavenVault."
         }
+
+@router.get("/system_path", response_model=str)
+def get_system_path():
+    """
+    Gets the system path from the settings.
+    """
+    return settings.SYSTEM_PATH
+
+@router.get("/download_path", response_model=str)
+def get_download_path():
+    """
+    Gets the download path from the settings.
+    """
+    return settings.DOWNLOAD_PATH
+
+@router.get("/space_available", response_model=bool)
+def get_space_available(size: int):
+    """
+    Checks if the space is available on the system.
+    """
+    path = Path(settings.DOWNLOAD_PATH)
+    if not path.exists():
+        return False
+    return shutil.disk_usage(path).free >= (size*1.2)

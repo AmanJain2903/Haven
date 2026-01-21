@@ -190,6 +190,9 @@ function ConfirmationModal({ isOpen, onClose, onConfirm, albumName, fileName, fi
             exit={{ scale: 0.95, opacity: 0 }}
             transition={{ type: "spring", duration: 0.3 }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onKeyUp={(e) => e.stopPropagation()}
+            onKeyPress={(e) => e.stopPropagation()}
             className="relative glass-panel rounded-2xl p-6 max-w-md w-full border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl"
           >
             <div className="flex flex-col items-center text-center gap-4">
@@ -383,6 +386,9 @@ export default function AddToAlbumModal({ isOpen, onClose, fileId, fileType, fil
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: "spring", duration: 0.3 }}
               onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              onKeyUp={(e) => e.stopPropagation()}
+              onKeyPress={(e) => e.stopPropagation()}
               className="relative glass-panel rounded-2xl p-6 max-w-5xl w-full border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl"
             >
               {/* Header */}
@@ -423,7 +429,7 @@ export default function AddToAlbumModal({ isOpen, onClose, fileId, fileType, fil
               {/* Albums Row - Horizontal Scroll */}
               {!loading && !error && (
                 <div className="overflow-x-auto pb-2">
-                  <div className="flex gap-4 min-w-max">
+                  <div className="flex gap-4 min-w-max mt-4 ml-4">
                     {/* Create Album Card */}
                     <div className="w-48 flex-shrink-0">
                       <CreateAlbumCard onClick={handleCreateAlbumClick} />
@@ -445,15 +451,6 @@ export default function AddToAlbumModal({ isOpen, onClose, fileId, fileType, fil
                       );
                     })}
                   </div>
-                </div>
-              )}
-
-              {/* No Albums Message */}
-              {!loading && !error && albums.length === 0 && (
-                <div className="text-center py-12">
-                  <p className="text-slate-600 dark:text-white/60 mb-4">
-                    No albums yet. Create your first album to get started!
-                  </p>
                 </div>
               )}
             </motion.div>

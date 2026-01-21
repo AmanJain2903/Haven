@@ -6,6 +6,7 @@ import { processTimelineData } from "../utils/timelineUtils";
 import ImageViewer from "./ImageViewer";
 import VideoViewer from "./VideoViewer";
 import RawImageViewer from "./RawImageViewer";
+import AddToAlbumModal from "./AddToAlbumModal";
 import { api } from "../api";
 import formatTime from "../utils/timeUtils";
 import FavoriteButton from "./FavoriteButton";
@@ -14,7 +15,7 @@ import DownloadButton from "./DownloadButton";
 import DeleteButton from "./DeleteButton";
 
 // PhotoCard component for images
-function PhotoCard({ photo, index, onClick, onFavoriteToggle }) {
+function PhotoCard({ photo, index, onClick, onFavoriteToggle, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -131,6 +132,7 @@ ${isHovered ? "opacity-100" : "opacity-0"}
               id={photo.id}
               type="image"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -140,7 +142,7 @@ ${isHovered ? "opacity-100" : "opacity-0"}
 }
 
 // VideoCard component for videos
-function VideoCard({ video, index, onClick, onFavoriteToggle }) {
+function VideoCard({ video, index, onClick, onFavoriteToggle, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewRef = useRef(null);
@@ -329,6 +331,7 @@ ${isHovered ? "opacity-100" : "opacity-0"}
               id={video.id}
               type="video"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -338,7 +341,7 @@ ${isHovered ? "opacity-100" : "opacity-0"}
 }
 
 // RawImageCard component for raw images
-function RawImageCard({ rawImage, index, onClick, onFavoriteToggle }) {
+function RawImageCard({ rawImage, index, onClick, onFavoriteToggle, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -459,6 +462,7 @@ ${isHovered ? "opacity-100" : "opacity-0"}
               id={rawImage.id}
               type="raw"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -475,9 +479,12 @@ export default function FavoritesGrid({
   hasMore = true,
   totalCount,
   statusCode,
-  onFavoriteToggle
+  onFavoriteToggle,
+  onLocationUpdate,
+  onDelete
 }) {
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const virtuosoRef = useRef(null);
   const previousIndexRef = useRef(null);
 
@@ -720,6 +727,7 @@ bg-clip-text text-transparent mb-2"
                         index={i}
                         onClick={() => handleMediaClick(media)}
                         onFavoriteToggle={onFavoriteToggle}
+                        onDelete={onDelete}
                       />
                     ) : media.type === "video" ? (
                       <VideoCard
@@ -727,6 +735,7 @@ bg-clip-text text-transparent mb-2"
                         index={i}
                         onClick={() => handleMediaClick(media)}
                         onFavoriteToggle={onFavoriteToggle}
+                        onDelete={onDelete}
                       />
                     ) : media.type === "raw" ? (
                       <RawImageCard
@@ -734,6 +743,7 @@ bg-clip-text text-transparent mb-2"
                         index={i}
                         onClick={() => handleMediaClick(media)}
                         onFavoriteToggle={onFavoriteToggle}
+                        onDelete={onDelete}
                       />
                     ) : null}
                   </div>
@@ -760,6 +770,10 @@ bg-clip-text text-transparent mb-2"
           currentIndex={getSortedIndex(selectedMedia)}
           totalPhotos={totalCount}
           onFavoriteToggle={onFavoriteToggle}
+          onLocationUpdate={onLocationUpdate}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+          onDelete={onDelete}
         />
       )}
 
@@ -772,6 +786,10 @@ bg-clip-text text-transparent mb-2"
           currentIndex={getSortedIndex(selectedMedia)}
           totalVideos={totalCount}
           onFavoriteToggle={onFavoriteToggle}
+          onLocationUpdate={onLocationUpdate}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+          onDelete={onDelete}
         />
       )}
 
@@ -784,6 +802,21 @@ bg-clip-text text-transparent mb-2"
           currentIndex={getSortedIndex(selectedMedia)}
           totalRawImages={totalCount}
           onFavoriteToggle={onFavoriteToggle}
+          onLocationUpdate={onLocationUpdate}
+          onDelete={onDelete}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+        />
+      )}
+
+      {/* Shared AddToAlbumModal - persists across viewer changes */}
+      {selectedMedia && (
+        <AddToAlbumModal
+          isOpen={isAddToAlbumModalOpen}
+          onClose={() => setIsAddToAlbumModalOpen(false)}
+          fileId={selectedMedia.id}
+          fileType={selectedMedia.type}
+          fileName={selectedMedia.filename || selectedMedia.name}
         />
       )}
     </div>

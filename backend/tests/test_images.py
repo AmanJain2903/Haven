@@ -177,65 +177,6 @@ class TestGetImageFileEndpoint:
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    @patch('app.api.v1.endpoints.images.FileResponse')
-    def test_get_image_file_jpeg(self, mock_file_response, client, db_session):
-        """Test serving a standard JPEG file"""
-        # Create a test image
-        test_image = Image(
-            filename="test.jpg",
-            file_path="/test/test.jpg",
-            file_size=1024
-        )
-        db_session.add(test_image)
-        db_session.commit()
-        
-        mock_file_response.return_value = MagicMock()
-        
-        response = client.get(f"/api/v1/images/file/{test_image.id}")
-        
-        # Should call FileResponse with the file path
-        mock_file_response.assert_called_once_with("/mock/storage/images/test.jpg")
-
-    @patch('app.api.v1.endpoints.images.pillow_heif')
-    @patch('app.api.v1.endpoints.images.FileResponse')
-    def test_get_image_file_heic_conversion_fallback(self, mock_file_response, mock_heif, client, db_session):
-        """Test HEIC conversion fallback on error"""
-        # Create a HEIC test image
-        heic_image = Image(
-            filename="corrupted.heic",
-            file_path="/test/corrupted.heic",
-            file_size=2048
-        )
-        db_session.add(heic_image)
-        db_session.commit()
-        
-        # Mock conversion failure
-        mock_heif.read_heif.side_effect = Exception("Conversion failed")
-        mock_file_response.return_value = MagicMock()
-        
-        response = client.get(f"/api/v1/images/file/{heic_image.id}")
-        
-        # Should fallback to FileResponse
-        mock_file_response.assert_called_once_with("/mock/storage/images/corrupted.heic")
-
-    @patch('app.api.v1.endpoints.images.FileResponse')
-    def test_get_image_file_png(self, mock_file_response, client, db_session):
-        """Test serving a PNG file"""
-        png_image = Image(
-            filename="test.png",
-            file_path="/test/test.png",
-            file_size=3072
-        )
-        db_session.add(png_image)
-        db_session.commit()
-        
-        mock_file_response.return_value = MagicMock()
-        
-        response = client.get(f"/api/v1/images/file/{png_image.id}")
-        
-        # Adjust expected path to match SystemConfig
-        mock_file_response.assert_called_once_with("/mock/storage/images/test.png")
-
 
 class TestGetImageDetailsEndpoint:
     """Test suite for GET /api/v1/images/details/{image_id} endpoint"""

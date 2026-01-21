@@ -26,9 +26,9 @@
 
 @layer utilities {
   .glass-panel {
-    @apply backdrop-blur-xl 
-           bg-white/70
-           dark:bg-slate-900/80;
+    @apply bg-white/75
+           dark:bg-slate-900/80
+           shadow-sm;
   }
   
   .glass-hover {

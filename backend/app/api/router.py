@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, images, videos, raw_images, intelligence, system, scan, all_media, map, favorites, albums
+from app.api.v1.endpoints import health, images, videos, raw_images, intelligence, system, scan, all_media, map, favorites, albums, dashboard
 
 api_router = APIRouter()
 
@@ -15,3 +15,4 @@ api_router.include_router(favorites.router, prefix="/favorites", tags=["Favorite
 api_router.include_router(albums.router, prefix="/albums", tags=["Albums"])
 api_router.include_router(intelligence.router, prefix="/intelligence", tags=["Intelligence"])
 api_router.include_router(map.router, prefix="/map", tags=["Map"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])

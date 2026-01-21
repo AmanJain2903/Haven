@@ -15,6 +15,8 @@ import io
 import hashlib
 from app.core.config import settings
 import numpy as np
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 
 backend_url = settings.HOST_URL
@@ -72,6 +74,72 @@ ALL_COLUMNS = [
     # --- System ---
     ("created_at", "created_at", DateTime),
 ]
+
+def get_coordinates(city: str = None, state: str = None, country: str = None) -> tuple:
+    """
+    Forward Geocoding: City, State, Country -> (Latitude, Longitude)
+    Returns: (latitude, longitude) as floats, or None if not found.
+    """
+    try:
+        geolocator = Nominatim(user_agent="haven_photo_manager")
+        
+        # Build a structured query dict (more accurate than a raw string)
+        query = {}
+        if city: query['city'] = city
+        if state: query['state'] = state
+        if country: query['country'] = country
+        
+        if not query:
+            return None
+
+        # Perform the lookup
+        location = geolocator.geocode(query, timeout=10, language='en')
+        
+        if location:
+            return (location.latitude, location.longitude)
+        else:
+            print(f"❌ Location not found: {query}")
+            return None
+
+    except Exception as e:
+        print(f"❌ Error getting coordinates: {e}")
+        return None
+
+def get_location_parts(latitude: float, longitude: float) -> dict:
+    """
+    Reverse geocode coordinates to get a human-readable location label.
+    """
+    try:
+        geolocator = Nominatim(user_agent="haven_photo_manager")
+        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10, language='en')
+        
+        if not location or not location.raw.get('address'):
+            return None
+        
+        address = location.raw['address']
+        parts = {
+            'city': None,
+            'state': None,
+            'country': None
+        }
+        
+        city = address.get('city') or address.get('town') or address.get('village') or address.get('municipality')
+        if city: parts['city'] = city
+        
+        state = address.get('state') or address.get('region')
+        if state: parts['state'] = state
+        
+        country = address.get('country')
+        if country: parts['country'] = country
+        
+        return parts
+        
+    except (GeocoderTimedOut, GeocoderServiceError) as e:
+        print(f"Geocoding service error: {e}")
+        return None
+    except Exception as e:
+        print(f"Error reverse geocoding ({latitude}, {longitude}): {e}")
+        return None
 
 @router.get("/images", response_model=List[dict])
 def get_map_data_images(db: Session = Depends(get_db)):
@@ -289,3 +357,65 @@ def get_map_data_all_media(db: Session = Depends(get_db)):
         })
     
     return response
+
+@router.get("/location/{fileType}/{id}", response_model=dict)
+def get_location_data(fileType: str, id: int, db: Session = Depends(get_db)):
+    """
+    Fetches the location data for a specific media file.
+    """
+    if not fileType or not id:
+        raise HTTPException(status_code=400, detail="File type and ID are required")
+    if fileType not in ["image", "video", "raw"]:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    if fileType == "image":
+        media = db.query(models.Image).filter(models.Image.id == id).first()
+    elif fileType == "video":
+        media = db.query(models.Video).filter(models.Video.id == id).first()
+    elif fileType == "raw":
+        media = db.query(models.RawImage).filter(models.RawImage.id == id).first()
+    return {
+        "city": media.city or None,
+        "state": media.state or None,
+        "country": media.country or None,
+    }
+
+@router.post("/location/{fileType}/{id}", response_model=dict)
+def update_location_data(fileType: str, id: int, city: str = None, state: str = None, country: str = None, db: Session = Depends(get_db)):
+    """
+    Updates the location data for a specific media file.
+    """
+    if not fileType or not id:
+        raise HTTPException(status_code=400, detail="File type and ID are required")
+    if fileType not in ["image", "video", "raw"]:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    if fileType == "image":
+        media = db.query(models.Image).filter(models.Image.id == id).first()
+    elif fileType == "video":
+        media = db.query(models.Video).filter(models.Video.id == id).first()
+    elif fileType == "raw":
+        media = db.query(models.RawImage).filter(models.RawImage.id == id).first()
+    coordinates = get_coordinates(city, state, country)
+    if coordinates:
+        media.latitude, media.longitude = coordinates
+        locationParts = get_location_parts(media.latitude, media.longitude)
+        if locationParts:
+            media.city = locationParts.get("city")
+            media.state = locationParts.get("state")
+            media.country = locationParts.get("country")
+        else:
+            media.city = city
+            media.state = state
+            media.country = country
+    else:
+        media.city = city
+        media.state = state
+        media.country = country
+        media.latitude = None
+        media.longitude = None
+    db.commit()
+    db.refresh(media)
+    return {
+        "city": media.city or None,
+        "state": media.state or None,
+        "country": media.country or None,
+    }

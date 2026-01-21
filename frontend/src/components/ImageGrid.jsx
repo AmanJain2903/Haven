@@ -7,13 +7,14 @@ import { Virtuoso } from "react-virtuoso";
 import { processTimelineData } from "../utils/timelineUtils";
 
 import ImageViewer from "./ImageViewer";
+import AddToAlbumModal from "./AddToAlbumModal";
 
 import FavoriteButton from "./FavoriteButton";
 import ShareButton from "./ShareButton";
 import DownloadButton from "./DownloadButton";
 import DeleteButton from "./DeleteButton";
 
-function PhotoCard({ photo, index, onClick, onFavoriteToggle }) {
+function PhotoCard({ photo, index, onClick, onFavoriteToggle, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -148,6 +149,7 @@ ${isHovered ? "opacity-100" : "opacity-0"}
               id={photo.id}
               type="image"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -196,9 +198,12 @@ export default function PhotoGrid({
   hasMore=true,
   totalCount,
   statusCode,
-  onFavoriteToggle
+  onFavoriteToggle,
+  onLocationUpdate,
+  onDelete
 }) {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
 
   const virtuosoRef = useRef(null);
 
@@ -430,6 +435,7 @@ bg-clip-text text-transparent mb-2"
                       index={i}
                       onClick={() => handlePhotoClick(photo)}
                       onFavoriteToggle={onFavoriteToggle}
+                      onDelete={onDelete}
                     />
                   </div>
                 ))}
@@ -458,6 +464,21 @@ bg-clip-text text-transparent mb-2"
           currentIndex={getSortedIndex(selectedPhoto)}
           totalPhotos={totalCount}
           onFavoriteToggle={onFavoriteToggle}
+          onLocationUpdate={onLocationUpdate}
+          onDelete={onDelete}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+        />
+      )}
+
+      {/* AddToAlbumModal */}
+      {selectedPhoto && (
+        <AddToAlbumModal
+          isOpen={isAddToAlbumModalOpen}
+          onClose={() => setIsAddToAlbumModalOpen(false)}
+          fileId={selectedPhoto.id}
+          fileType="image"
+          fileName={selectedPhoto.filename}
         />
       )}
     </div>

@@ -130,8 +130,17 @@ def get_raw_image_file(raw_image_id: int, db: Session = Depends(get_db)):
     if not os.path.exists(filePath):
         raise HTTPException(status_code=404, detail="File not found on disk")
     
-    # Serve the original RAW file
-    return FileResponse(filePath)
+    # Serve the original RAW file with CORS headers and download disposition
+    response = FileResponse(
+        filePath,
+        media_type="application/octet-stream",
+        filename=raw.filename
+    )
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Content-Disposition"] = f'attachment; filename="{raw.filename}"'
+    return response
 
 @router.get("/preview/{raw_image_id}")
 def get_raw_preview_file(raw_image_id: int, db: Session = Depends(get_db)):
@@ -252,3 +261,86 @@ def get_raw_timeline(
         }
         for raw in raw_images
     ]
+
+@router.delete("/delete/{raw_image_id}")
+def delete_raw_image(raw_image_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a raw image file from both cold storage and hot storage (thumbnails & previews), then remove from database.
+    Also removes the raw image from any albums it's part of.
+    """
+    # 1. Get the raw image from database
+    raw = db.query(models.RawImage).filter(models.RawImage.id == raw_image_id).first()
+    if not raw:
+        raise HTTPException(status_code=404, detail="Raw image not found")
+    
+    # 2. Remove from all albums first
+    albums = db.query(models.Albums).filter(models.Albums.album_raw_images_ids.contains([raw_image_id])).all()
+    for album in albums:
+        # Remove this raw image ID from the array
+        album.album_raw_images_ids = [raw_id for raw_id in album.album_raw_images_ids if raw_id != raw_image_id]
+        album.album_raw_images_count -=1
+        album.album_total_count -=1
+        # If this was the cover, clear it
+        if album.album_cover_type == 'raw' and album.album_cover_id == raw_image_id:
+            album.album_cover_type = None
+            album.album_cover_id = None
+    db.commit()
+    
+    # 3. Get storage paths
+    cold_storage = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    hot_storage = settings.APP_DATA_DIR
+    
+    if not cold_storage or not cold_storage.value:
+        raise HTTPException(status_code=503, detail="Cold storage path not configured")
+    if not hot_storage:
+        raise HTTPException(status_code=503, detail="Hot storage path not configured")
+    
+    # 4. Delete original file from cold storage (storagePath/raw/)
+    cold_file_path = os.path.join(cold_storage.value, 'raw', raw.filename)
+    if os.path.exists(cold_file_path):
+        try:
+            os.remove(cold_file_path)
+            print(f"Deleted cold storage file: {cold_file_path}")
+        except Exception as e:
+            print(f"Error deleting cold storage file: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete original file: {str(e)}")
+    
+    # 5. Delete hot storage files (thumbnails and previews)
+    # Thumbnails are named: thumb_{hash}.jpg
+    # Previews are named: preview_{hash}.jpg (for RAWs, preview is a large JPG)
+    path_hash = hashlib.md5(cold_file_path.encode('utf-8')).hexdigest()
+    thumb_filename = f"thumb_{path_hash}.jpg"
+    preview_filename = f"preview_{path_hash}.jpg"
+    
+    thumbnail_dir = os.path.join(hot_storage, "raw_thumbnails")
+    preview_dir = os.path.join(hot_storage, "raw_previews")
+    
+    thumb_path = os.path.join(thumbnail_dir, thumb_filename)
+    preview_path = os.path.join(preview_dir, preview_filename)
+    
+    # Delete thumbnail
+    if os.path.exists(thumb_path):
+        try:
+            os.remove(thumb_path)
+            print(f"Deleted thumbnail: {thumb_path}")
+        except Exception as e:
+            print(f"Error deleting thumbnail: {e}")
+    
+    # Delete preview
+    if os.path.exists(preview_path):
+        try:
+            os.remove(preview_path)
+            print(f"Deleted preview: {preview_path}")
+        except Exception as e:
+            print(f"Error deleting preview: {e}")
+    
+    # 6. Delete from database
+    try:
+        db.delete(raw)
+        db.commit()
+        print(f"Deleted raw image from database: {raw.filename}")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete from database: {str(e)}")
+    
+    return {"success": True, "message": f"Raw image {raw.filename} deleted successfully"}

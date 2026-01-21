@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { processTimelineData } from "../utils/timelineUtils";
 import VideoViewer from "./VideoViewer";
+import AddToAlbumModal from "./AddToAlbumModal";
 import { api } from "../api";
 import formatTime from "../utils/timeUtils";
 import FavoriteButton from "./FavoriteButton";
@@ -11,7 +12,7 @@ import ShareButton from "./ShareButton";
 import DownloadButton from "./DownloadButton";
 import DeleteButton from "./DeleteButton";    
 
-function VideoCard({ video, index, onClick, onFavoriteToggle }) {
+function VideoCard({ video, index, onClick, onFavoriteToggle, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewRef = useRef(null);
@@ -209,6 +210,7 @@ ${isHovered ? "opacity-100" : "opacity-0"}
               id={video.id}
               type="video"
               size="small"
+              onSuccess={onDelete}
             />
           </div>
         </motion.div>
@@ -225,9 +227,12 @@ export default function VideoGrid({
   hasMore = true,
   totalCount,
   statusCode,
-  onFavoriteToggle
+  onFavoriteToggle,
+  onLocationUpdate,
+  onDelete
 }) {
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const virtuosoRef = useRef(null);
 
   const sortedVideos = useMemo(() => {
@@ -427,6 +432,7 @@ bg-clip-text text-transparent mb-2"
                       index={i}
                       onClick={() => handleVideoClick(video)}
                       onFavoriteToggle={onFavoriteToggle}
+                      onDelete={onDelete}
                     />
                   </div>
                 ))}
@@ -452,6 +458,21 @@ bg-clip-text text-transparent mb-2"
           currentIndex={getSortedIndex(selectedVideo)}
           totalVideos={totalCount}
           onFavoriteToggle={onFavoriteToggle}
+          onLocationUpdate={onLocationUpdate}
+          onDelete={onDelete}
+          isAddToAlbumModalOpen={isAddToAlbumModalOpen}
+          setIsAddToAlbumModalOpen={setIsAddToAlbumModalOpen}
+        />
+      )}
+
+      {/* AddToAlbumModal */}
+      {selectedVideo && (
+        <AddToAlbumModal
+          isOpen={isAddToAlbumModalOpen}
+          onClose={() => setIsAddToAlbumModalOpen(false)}
+          fileId={selectedVideo.id}
+          fileType="video"
+          fileName={selectedVideo.filename}
         />
       )}
     </div>

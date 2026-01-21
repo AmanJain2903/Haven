@@ -91,7 +91,7 @@ export default function CreateAlbumModal({ isOpen, onClose, onSuccess }) {
         exit={{ opacity: 0 }}
         style={{ willChange: "opacity" }}
         transition={{ duration: 0.2 }}
-        className="fixed inset-0 z-[100] flex items-center justify-center"
+        className="fixed inset-0 z-[200] flex items-center justify-center"
         onClick={handleClose}
       >
         {/* Translucent Background with Blur */}
@@ -104,6 +104,9 @@ export default function CreateAlbumModal({ isOpen, onClose, onSuccess }) {
           exit={{ scale: 0.9, opacity: 0 }}
           transition={{ duration: 0.2 }}
           onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          onKeyUp={(e) => e.stopPropagation()}
+          onKeyPress={(e) => e.stopPropagation()}
           className="relative z-10 w-full max-w-md mx-4 glass-panel rounded-3xl p-8 shadow-2xl border-2 border-purple-400/30 dark:border-cyan-400/30"
         >
           {/* Close Button */}

@@ -118,8 +118,17 @@ def get_video_file(video_id: int, db: Session = Depends(get_db)):
     if not os.path.exists(filePath):
          raise HTTPException(status_code=404, detail="File on disk not found")
 
-    # Serve the file directly. No HEIC conversion needed for videos.
-    return FileResponse(filePath)
+    # Serve the file directly with download headers
+    response = FileResponse(
+        filePath,
+        media_type="application/octet-stream",
+        filename=vid.filename
+    )
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Content-Disposition"] = f'attachment; filename="{vid.filename}"'
+    return response
 
 @router.get("/preview/{video_id}")
 def get_preview_file(video_id: int, db: Session = Depends(get_db)):
@@ -227,3 +236,86 @@ def get_timeline(
         }
         for vid in videos
     ]
+
+@router.delete("/delete/{video_id}")
+def delete_video(video_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a video file from both cold storage and hot storage (thumbnails & previews), then remove from database.
+    Also removes the video from any albums it's part of.
+    """
+    # 1. Get the video from database
+    vid = db.query(models.Video).filter(models.Video.id == video_id).first()
+    if not vid:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # 2. Remove from all albums first
+    albums = db.query(models.Albums).filter(models.Albums.album_videos_ids.contains([video_id])).all()
+    for album in albums:
+        # Remove this video ID from the array
+        album.album_videos_ids = [vid_id for vid_id in album.album_videos_ids if vid_id != video_id]
+        album.album_videos_count -=1
+        album.album_total_count -=1
+        # If this was the cover, clear it
+        if album.album_cover_type == 'video' and album.album_cover_id == video_id:
+            album.album_cover_type = None
+            album.album_cover_id = None
+    db.commit()
+    
+    # 3. Get storage paths
+    cold_storage = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    hot_storage = settings.APP_DATA_DIR
+    
+    if not cold_storage or not cold_storage.value:
+        raise HTTPException(status_code=503, detail="Cold storage path not configured")
+    if not hot_storage:
+        raise HTTPException(status_code=503, detail="Hot storage path not configured")
+    
+    # 4. Delete original file from cold storage (storagePath/videos/)
+    cold_file_path = os.path.join(cold_storage.value, 'videos', vid.filename)
+    if os.path.exists(cold_file_path):
+        try:
+            os.remove(cold_file_path)
+            print(f"Deleted cold storage file: {cold_file_path}")
+        except Exception as e:
+            print(f"Error deleting cold storage file: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete original file: {str(e)}")
+    
+    # 5. Delete hot storage files (thumbnails and previews)
+    # Thumbnails are named: thumb_{hash}.jpg
+    # Previews are named: preview_{hash}.mp4
+    path_hash = hashlib.md5(cold_file_path.encode('utf-8')).hexdigest()
+    thumb_filename = f"thumb_{path_hash}.jpg"
+    preview_filename = f"preview_{path_hash}.mp4"
+    
+    thumbnail_dir = os.path.join(hot_storage, "video_thumbnails")
+    preview_dir = os.path.join(hot_storage, "video_previews")
+    
+    thumb_path = os.path.join(thumbnail_dir, thumb_filename)
+    preview_path = os.path.join(preview_dir, preview_filename)
+    
+    # Delete thumbnail
+    if os.path.exists(thumb_path):
+        try:
+            os.remove(thumb_path)
+            print(f"Deleted thumbnail: {thumb_path}")
+        except Exception as e:
+            print(f"Error deleting thumbnail: {e}")
+    
+    # Delete preview
+    if os.path.exists(preview_path):
+        try:
+            os.remove(preview_path)
+            print(f"Deleted preview: {preview_path}")
+        except Exception as e:
+            print(f"Error deleting preview: {e}")
+    
+    # 6. Delete from database
+    try:
+        db.delete(vid)
+        db.commit()
+        print(f"Deleted video from database: {vid.filename}")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete from database: {str(e)}")
+    
+    return {"success": True, "message": f"Video {vid.filename} deleted successfully"}

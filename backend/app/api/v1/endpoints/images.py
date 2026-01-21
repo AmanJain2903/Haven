@@ -138,16 +138,45 @@ def get_image_file(image_id: int, db: Session = Depends(get_db)):
             image.save(img_byte_arr, format='JPEG', quality=80)
             img_byte_arr = img_byte_arr.getvalue()
 
-            # 3. Return as a JPEG response
-            return Response(content=img_byte_arr, media_type="image/jpeg")
+            # 3. Return as a JPEG response with CORS headers
+            # Convert HEIC filename to JPG for download
+            jpg_filename = os.path.splitext(img.filename)[0] + '.jpg'
+            return Response(
+                content=img_byte_arr, 
+                media_type="application/octet-stream",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "*",
+                    "Content-Disposition": f'attachment; filename="{jpg_filename}"',
+                }
+            )
             
         except Exception as e:
             print(f"Error converting HEIC: {e}")
             # Fallback: try sending original if conversion fails
-            return FileResponse(filePath)
+            response = FileResponse(
+                filePath,
+                media_type="application/octet-stream",
+                filename=img.filename
+            )
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Content-Disposition"] = f'attachment; filename="{img.filename}"'
+            return response
 
-    # For standard images (JPG, PNG), just send the file directly
-    return FileResponse(filePath)
+    # For standard images (JPG, PNG), just send the file directly with CORS headers
+    response = FileResponse(
+        filePath,
+        media_type="application/octet-stream",
+        filename=img.filename
+    )
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Content-Disposition"] = f'attachment; filename="{img.filename}"'
+    return response
 
 @router.get("/thumbnail/{image_id}")
 def get_thumbnail_file(image_id: int, db: Session = Depends(get_db)):
@@ -234,3 +263,72 @@ def get_timeline(
         }
         for img in images
     ]
+
+@router.delete("/delete/{image_id}")
+def delete_image(image_id: int, db: Session = Depends(get_db)):
+    """
+    Delete an image file from both cold storage and hot storage, then remove from database.
+    Also removes the image from any albums it's part of.
+    """
+    # 1. Get the image from database
+    img = db.query(models.Image).filter(models.Image.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    # 2. Remove from all albums first
+    albums = db.query(models.Albums).filter(models.Albums.album_images_ids.contains([image_id])).all()
+    for album in albums:
+        # Remove this image ID from the array
+        album.album_images_ids = [img_id for img_id in album.album_images_ids if img_id != image_id]
+        album.album_images_count -=1
+        album.album_total_count -=1
+        # If this was the cover, clear it
+        if album.album_cover_type == 'image' and album.album_cover_id == image_id:
+            album.album_cover_type = None
+            album.album_cover_id = None
+    db.commit()
+    
+    # 3. Get storage paths
+    cold_storage = db.query(models.SystemConfig).filter_by(key="storage_path").first()
+    hot_storage = settings.APP_DATA_DIR
+    
+    if not cold_storage or not cold_storage.value:
+        raise HTTPException(status_code=503, detail="Cold storage path not configured")
+    if not hot_storage:
+        raise HTTPException(status_code=503, detail="Hot storage path not configured")
+    
+    # 4. Delete original file from cold storage (storagePath/images/)
+    cold_file_path = os.path.join(cold_storage.value, 'images', img.filename)
+    if os.path.exists(cold_file_path):
+        try:
+            os.remove(cold_file_path)
+            print(f"Deleted cold storage file: {cold_file_path}")
+        except Exception as e:
+            print(f"Error deleting cold storage file: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete original file: {str(e)}")
+    
+    # 5. Delete hot storage files (thumbnails)
+    # Thumbnails are named: thumb_{hash}.jpg where hash = md5(full_path)
+    path_hash = hashlib.md5(cold_file_path.encode('utf-8')).hexdigest()
+    thumb_filename = f"thumb_{path_hash}.jpg"
+    
+    thumbnail_dir = os.path.join(hot_storage, "thumbnails")
+    thumb_path = os.path.join(thumbnail_dir, thumb_filename)
+    
+    if os.path.exists(thumb_path):
+        try:
+            os.remove(thumb_path)
+            print(f"Deleted thumbnail: {thumb_path}")
+        except Exception as e:
+            print(f"Error deleting thumbnail: {e}")
+    
+    # 6. Delete from database
+    try:
+        db.delete(img)
+        db.commit()
+        print(f"Deleted image from database: {img.filename}")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete from database: {str(e)}")
+    
+    return {"success": True, "message": f"Image {img.filename} deleted successfully"}

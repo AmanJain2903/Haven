@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
-import { Plus, Image as ImageIcon, Download, Trash2, Edit, ArrowLeft } from "lucide-react";
+import { Plus, Image as ImageIcon, Download, Trash2, Edit, ArrowLeft, XCircle } from "lucide-react";
 import { api } from "../api";
 import CreateAlbumModal from "./CreateAlbumModal";
 import EditAlbumModal from "./EditAlbumModal";
@@ -8,7 +8,7 @@ import DeleteAlbumModal from "./DeleteAlbumModal";
 import AlbumGrid from "./AlbumGrid";
 import SearchBar from "./SearchBar";
 
-function AlbumCard({ album, index, onEdit, onDelete, onClick }) {
+function AlbumCard({ album, index, onEdit, onDelete, onClick, onDownload, onCancelDownload, isDownloading }) {
   const [isHovered, setIsHovered] = useState(false);
   const [coverUrl, setCoverUrl] = useState(null);
   const [loadingCover, setLoadingCover] = useState(false);
@@ -141,13 +141,21 @@ function AlbumCard({ album, index, onEdit, onDelete, onClick }) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  console.log("Download album:", album.id);
+                  if (isDownloading) {
+                    onCancelDownload && onCancelDownload(album.id);
+                  } else {
+                    onDownload && onDownload(album.id, album.album_name);
+                  }
                 }}
                 className="p-2 rounded-full backdrop-blur-xl border transition-all duration-200 group/btn
                   bg-white/10 dark:bg-white/5 border-white/20 
                   hover:bg-teal-500/30 dark:hover:bg-teal-500/20 hover:border-teal-400/50 dark:hover:border-teal-400/40"
               >
-                <Download className="w-4 h-4 text-white/70 group-hover/btn:text-teal-400" />
+                {isDownloading ? (
+                  <XCircle className="w-4 h-4 text-red-400" />
+                ) : (
+                  <Download className="w-4 h-4 text-white/70 group-hover/btn:text-teal-400" />
+                )}
               </button>
 
               <button
@@ -223,7 +231,7 @@ function CreateAlbumCard({ index, onClick }) {
   );
 }
 
-export default function Albums({ onFavoriteToggle, searchQuery: externalSearchQuery = "", searchInputValue: externalSearchInputValue = "", onSearch, onClearSearch, updateProgressBar, removeProgressBar }) {
+export default function Albums({ onFavoriteToggle, searchQuery: externalSearchQuery = "", searchInputValue: externalSearchInputValue = "", onSearch, onClearSearch, updateProgressBar, removeProgressBar, onDelete, startAlbumDownload, hasActiveDownload, cancelAlbumDownload }) {
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -382,6 +390,10 @@ export default function Albums({ onFavoriteToggle, searchQuery: externalSearchQu
         onClearSearch={handleReset}
         updateProgressBar={updateProgressBar}
         removeProgressBar={removeProgressBar}
+        onDelete={onDelete}
+        startAlbumDownload={startAlbumDownload}
+        hasActiveDownload={hasActiveDownload}
+        cancelAlbumDownload={cancelAlbumDownload}
       />
     );
   }
@@ -427,6 +439,9 @@ export default function Albums({ onFavoriteToggle, searchQuery: externalSearchQu
               onEdit={handleEdit}
               onDelete={handleDelete}
               onClick={() => handleAlbumClick(album.id)}
+              isDownloading={hasActiveDownload ? hasActiveDownload(album.id) : false}
+              onDownload={(albumId, albumName) => startAlbumDownload && startAlbumDownload(albumId, albumName)}
+              onCancelDownload={(albumId) => cancelAlbumDownload && cancelAlbumDownload(albumId)}
             />
           ))}
         </div>
@@ -457,6 +472,8 @@ export default function Albums({ onFavoriteToggle, searchQuery: externalSearchQu
         albumName={deletingAlbumName}
         updateProgressBar={updateProgressBar}
         removeProgressBar={removeProgressBar}
+        hasActiveDownload={hasActiveDownload}
+        cancelAlbumDownload={cancelAlbumDownload}
       />
     </>
   );

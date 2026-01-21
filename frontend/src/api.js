@@ -31,6 +31,11 @@ export const api = {
 
   // System API ENDPOINTS
   // ------------------------------------------------------------
+  // Get project version
+  getProjectVersion: async () => {
+    const response = await axios.get(`${API_URL}/system/version`);
+    return response.data;
+  },
   // Get backend status
   getBackendStatus: async () => {
     const response = await axios.get(`${API_URL}/health/status`);
@@ -46,6 +51,21 @@ export const api = {
     const response = await axios.get(`${API_URL}/system/config`, {
       params: { key: key }
     });
+    return response.data;
+  },
+  // Get system path
+  getSystemPath: async () => {
+    const response = await axios.get(`${API_URL}/system/system_path`);
+    return response.data;
+  },
+  // Get download path
+  getDownloadPath: async () => {
+    const response = await axios.get(`${API_URL}/system/download_path`);
+    return response.data;
+  },
+  // Check if space is available
+  checkSpaceAvailable: async (size) => {
+    const response = await axios.get(`${API_URL}/system/space_available`, { params: { size: size } });
     return response.data;
   },
   // ------------------------------------------------------------
@@ -76,6 +96,11 @@ export const api = {
   // Fetch detailed info for a specific image
   getImageDetails: async (id) => {
     const response = await axios.get(`${API_URL}/images/details/${id}`);
+    return response.data;
+  },
+
+  deleteImage: async (id) => {
+    const response = await axios.delete(`${API_URL}/images/delete/${id}`);
     return response.data;
   },
   // ------------------------------------------------------------
@@ -114,6 +139,11 @@ export const api = {
     return response.data;
   },
 
+  deleteVideo: async (id) => {
+    const response = await axios.delete(`${API_URL}/videos/delete/${id}`);
+    return response.data;
+  },
+
   // ------------------------------------------------------------
 
   // Raw Images API ENDPOINTS
@@ -146,6 +176,11 @@ export const api = {
 
   getRawDetails: async (id) => {
     const response = await axios.get(`${API_URL}/raw_images/details/${id}`);
+    return response.data;
+  },
+
+  deleteRawImage: async (id) => {
+    const response = await axios.delete(`${API_URL}/raw_images/delete/${id}`);
     return response.data;
   },
   // ------------------------------------------------------------
@@ -311,6 +346,18 @@ export const api = {
     const response = await axios.get(`${API_URL}/map/all_media`);
     return response.data;
   },
+
+  getFileLocation: async (fileType, id) => {
+    const response = await axios.get(`${API_URL}/map/location/${fileType}/${id}`);
+    return response.data;
+  },
+
+  updateFileLocation: async (fileType, id, city, state, country) => {
+    const response = await axios.post(`${API_URL}/map/location/${fileType}/${id}`, null, {
+      params: { city: city, state: state, country: country }
+    });
+    return response.data;
+  },
   // ------------------------------------------------------------
 
   // Albums API ENDPOINTS
@@ -380,6 +427,137 @@ export const api = {
     return response.data;
   },
 
+  // Album Download API ENDPOINTS
+  // ------------------------------------------------------------
+  startAlbumDownload: async (albumId) => {
+    const response = await axios.post(`${API_URL}/albums/download_album/${albumId}`);
+    return response.data;
+  },
+
+  getDownloadTaskStatus: async (taskId) => {
+    const response = await axios.get(`${API_URL}/albums/download_task_status/${taskId}`);
+    return response.data;
+  },
+
+  getDownloadFileUrl: (taskId) => `${API_URL}/albums/download_file/${taskId}`,
+
+  cleanupDownload: async (taskId) => {
+    const response = await axios.delete(`${API_URL}/albums/cleanup_download/${taskId}`);
+    return response.data;
+  },
+
+  cancelDownload: async (taskId) => {
+    const response = await axios.post(`${API_URL}/albums/cancel_download/${taskId}`);
+    return response.data;
+  },
+
+  // Haven Vault download (full vault)
+  startVaultDownload: async () => {
+    const response = await axios.post(`${API_URL}/dashboard/download_haven_vault`);
+    return response.data;
+  },
+  getVaultDownloadTaskStatus: async (taskId) => {
+    const response = await axios.get(`${API_URL}/dashboard/download_task_status/${taskId}`);
+    return response.data;
+  },
+  getVaultDownloadFileUrl: (taskId) => `${API_URL}/dashboard/download_file/${taskId}`,
+  cleanupVaultDownload: async (taskId) => {
+    const response = await axios.delete(`${API_URL}/dashboard/cleanup_download/${taskId}`);
+    return response.data;
+  },
+  cancelVaultDownload: async (taskId) => {
+    const response = await axios.post(`${API_URL}/dashboard/cancel_download/${taskId}`);
+    return response.data;
+  },
+
+  // Haven App Data download
+  startAppDataDownload: async () => {
+    const response = await axios.post(`${API_URL}/dashboard/download_app_data`);
+    return response.data;
+  },
+  getAppDataDownloadTaskStatus: async (taskId) => {
+    const response = await axios.get(`${API_URL}/dashboard/app_data_download_task_status/${taskId}`);
+    return response.data;
+  },
+  getAppDataDownloadFileUrl: (taskId) => `${API_URL}/dashboard/app_data_download_file/${taskId}`,
+  cleanupAppDataDownload: async (taskId) => {
+    const response = await axios.delete(`${API_URL}/dashboard/cleanup_app_data_download/${taskId}`);
+    return response.data;
+  },
+  cancelAppDataDownload: async (taskId) => {
+    const response = await axios.post(`${API_URL}/dashboard/cancel_app_data_download/${taskId}`);
+    return response.data;
+  },
+
+  // Haven Metadata download
+  startMetadataDownload: async () => {
+    const response = await axios.post(`${API_URL}/dashboard/download_metadata`);
+    return response.data;
+  },
+  getMetadataDownloadTaskStatus: async (taskId) => {
+    const response = await axios.get(`${API_URL}/dashboard/metadata_download_task_status/${taskId}`);
+    return response.data;
+  },
+  getMetadataDownloadFileUrl: (taskId) => `${API_URL}/dashboard/metadata_download_file/${taskId}`,
+  cleanupMetadataDownload: async (taskId) => {
+    const response = await axios.delete(`${API_URL}/dashboard/cleanup_metadata_download/${taskId}`);
+    return response.data;
+  },
+  cancelMetadataDownload: async (taskId) => {
+    const response = await axios.post(`${API_URL}/dashboard/cancel_metadata_download/${taskId}`);
+    return response.data;
+  },
+  // ------------------------------------------------------------
+
+  // Dashboard API ENDPOINTS
+  // ------------------------------------------------------------
+  getHotStoragePath: async () => {
+    const response = await axios.get(`${API_URL}/dashboard/hot_storage_path`);
+    return response.data;
+  },
+
+  getStoragePath: async () => {
+    const response = await axios.get(`${API_URL}/dashboard/storage_path`);
+    return response.data;
+  },
+
+  checkPathExistence: async (path) => {
+    const response = await axios.get(`${API_URL}/dashboard/check_path_existence`, {
+      params: { path: path }
+    });
+    return response.data;
+  },
+
+  getHavenVaultDiskInformation: async (path) => {
+    const response = await axios.get(`${API_URL}/dashboard/disk_information`, {
+      params: { path: path }
+    });
+    return response.data;
+  },
+
+  getHavenAppDataSize: async () => {
+    const response = await axios.get(`${API_URL}/dashboard/app_data_size`);
+    return response.data;
+  },
+
+  getHavenVaultDataBreakdown: async (path) => {
+    const response = await axios.get(`${API_URL}/dashboard/data_breakdown`, {
+      params: { path: path }
+    });
+    return response.data;
+  },
+
+  getProcessedFilesInformation: async (path) => {
+    const response = await axios.get(`${API_URL}/dashboard/processed_files_information`, {
+      params: { path: path }
+    });
+    return response.data;
+  },
+
+  getMetadataInformation: async () => {
+    const response = await axios.get(`${API_URL}/dashboard/metadata_information`);
+    return response.data;
+  },
   // ------------------------------------------------------------
 
 
@@ -392,6 +570,6 @@ export const api = {
   getVideoPreviewUrl: (id) => `${API_URL}/videos/preview/${id}`,
   getRawUrl: (id) => `${API_URL}/raw_images/file/${id}`,
   getRawThumbnailUrl: (id) => `${API_URL}/raw_images/thumbnail/${id}`,
-  getRawPreviewUrl: (id) => `${API_URL}/raw_images/preview/${id}`,
+  getRawPreviewUrl: (id) => `${API_URL}/raw_images/preview/${id}`
   // ------------------------------------------------------------
 };

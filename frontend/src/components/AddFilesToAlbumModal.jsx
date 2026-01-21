@@ -316,6 +316,9 @@ export default function AddFilesToAlbumModal({ isOpen, onClose, albumId, albumNa
             exit={{ scale: 0.95, opacity: 0 }}
             transition={{ type: "spring", duration: 0.3 }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onKeyUp={(e) => e.stopPropagation()}
+            onKeyPress={(e) => e.stopPropagation()}
             className="relative glass-panel rounded-2xl p-6 max-w-6xl w-full max-h-[85vh] flex flex-col border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl"
           >
             {/* Close Button - Top Right */}
@@ -404,7 +407,7 @@ export default function AddFilesToAlbumModal({ isOpen, onClose, albumId, albumNa
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mt-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mt-4 ml-4 mr-4">
                     {allFiles.map((file) => {
                       const inAlbum = isInAlbum(file);
                       const selected = isSelected(file);

@@ -3,8 +3,16 @@ import { useState, useEffect } from "react";
 import { X, AlertTriangle } from "lucide-react";
 import { api, batchDeleteAlbum, getBatchTaskStatus } from "../api";
 
-export default function DeleteAlbumModal({ isOpen, onClose, onSuccess, albumId, albumName, updateProgressBar, removeProgressBar }) {
+export default function DeleteAlbumModal({ isOpen, onClose, onSuccess, albumId, albumName, updateProgressBar, removeProgressBar, hasActiveDownload, cancelAlbumDownload }) {
   const [error, setError] = useState(null);
+  const [hasDownload, setHasDownload] = useState(false);
+
+  // Check if album has active download
+  useEffect(() => {
+    if (isOpen && hasActiveDownload) {
+      setHasDownload(hasActiveDownload(albumId));
+    }
+  }, [isOpen, albumId, hasActiveDownload]);
 
   // Prevent scrolling the background page while modal is open
   useEffect(() => {
@@ -40,6 +48,12 @@ export default function DeleteAlbumModal({ isOpen, onClose, onSuccess, albumId, 
     }
 
     try {
+      // Cancel active download if it exists
+      if (hasDownload && cancelAlbumDownload) {
+        console.log('🚫 Cancelling active download before deleting album:', albumId);
+        await cancelAlbumDownload(albumId);
+      }
+
       // Start batch delete operation via Celery
       const { task_id } = await batchDeleteAlbum(albumId);
       console.log(`🗑️ Started batch delete task: ${task_id}`);
@@ -160,6 +174,9 @@ export default function DeleteAlbumModal({ isOpen, onClose, onSuccess, albumId, 
           exit={{ scale: 0.9, opacity: 0 }}
           transition={{ duration: 0.2 }}
           onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          onKeyUp={(e) => e.stopPropagation()}
+          onKeyPress={(e) => e.stopPropagation()}
           className="relative z-10 w-full max-w-md mx-4 glass-panel rounded-3xl p-8 shadow-2xl border-2 border-red-400/30 dark:border-red-500/30"
         >
           {/* Close Button */}
@@ -202,9 +219,20 @@ export default function DeleteAlbumModal({ isOpen, onClose, onSuccess, albumId, 
             <p className="text-slate-900 dark:text-white font-semibold text-lg mt-1">
               "{albumName}"
             </p>
-            <p className="text-slate-600 dark:text-white/60 text-sm mt-2">
-              All media in this album will remain, but the album will be permanently deleted.
-            </p>
+            {hasDownload ? (
+              <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <p className="text-amber-700 dark:text-amber-400 text-sm font-medium">
+                  ⚠️ This album is currently being downloaded
+                </p>
+                <p className="text-amber-600 dark:text-amber-500 text-xs mt-1">
+                  Deleting will cancel the download
+                </p>
+              </div>
+            ) : (
+              <p className="text-slate-600 dark:text-white/60 text-sm mt-2">
+                All media in this album will remain, but the album will be permanently deleted.
+              </p>
+            )}
           </div>
 
           {/* Error Message */}

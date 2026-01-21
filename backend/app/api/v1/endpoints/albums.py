@@ -21,7 +21,7 @@ from datetime import datetime
 from sqlalchemy.ext.mutable import MutableList
 import numpy as np
 import uuid
-from app.tasks import task_batch_add_to_album, task_batch_delete_album
+from app.tasks import task_batch_add_to_album, task_batch_delete_album, task_create_album_zip
 import redis
 from app.core.config import settings
 
@@ -551,8 +551,15 @@ def get_album_timeline(
     # --- 3. Union & Sort ---
     combined_query = union_all(q_images, q_videos, q_raws).alias("media_union")
 
-    # Sort by Date DESC
-    final_query = db.query(combined_query).filter(combined_query.c.album_ids.contains([albumId])).order_by(
+    # Base query for counting (without offset/limit)
+    base_query = db.query(combined_query).filter(combined_query.c.album_ids.contains([albumId]))
+    
+    # Calculate total count BEFORE applying offset/limit
+    total_count = base_query.count()
+    response.headers["X-Total-Count"] = str(total_count)
+
+    # Sort by Date DESC and apply pagination
+    final_query = base_query.order_by(
         case(
             (combined_query.c.capture_date != None, 0),
             else_=1
@@ -562,9 +569,6 @@ def get_album_timeline(
     ).offset(skip).limit(limit)
 
     results = final_query.all()
-
-    total_count = final_query.count()
-    response.headers["X-Total-Count"] = str(total_count)
 
     # --- 4. Get Config for URL generation ---
     config = db.query(models.SystemConfig).filter_by(key="storage_path").first()
@@ -760,4 +764,192 @@ def get_batch_task_status(task_id: str):
         raise
     except Exception as e:
         print(f"❌ Error getting task status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- ALBUM DOWNLOAD ENDPOINTS ---
+
+@router.post("/download_album/{album_id}")
+def start_album_download(album_id: int, db: Session = Depends(get_db)):
+    """
+    Start a background task to create a zip file for an album.
+    Returns a task_id to track progress.
+    """
+    try:
+        # Get album to verify it exists and get name
+        album = db.query(models.Albums).filter(models.Albums.id == album_id).first()
+        if not album:
+            raise HTTPException(status_code=404, detail="Album not found")
+        
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Sanitize album name for filename
+        album_name = album.album_name.replace(" ", "_").replace("/", "_")
+        
+        # Start Celery task
+        task_create_album_zip.delay(task_id, album_id, album_name)
+        
+        return {
+            "task_id": task_id,
+            "status": "started",
+            "album_name": album.album_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error starting album download: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/download_task_status/{task_id}")
+def get_download_task_status(task_id: str):
+    """
+    Get the current status of an album download task.
+    """
+    try:
+        # Get task info from Redis
+        task_data = redis_client.hgetall(f"download_task:{task_id}")
+        
+        if not task_data:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Decode bytes to strings
+        status_info = {
+            key.decode('utf-8'): value.decode('utf-8')
+            for key, value in task_data.items()
+        }
+        
+        # Convert numeric fields
+        for field in ['total', 'completed', 'progress', 'album_id']:
+            if field in status_info:
+                status_info[field] = int(status_info[field])
+        
+        return status_info
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting download task status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/download_file/{task_id}")
+def download_album_file(task_id: str):
+    """
+    Returns the zip file from downloads folder. File is NOT deleted after download.
+    """
+    try:
+        # Get task info from Redis
+        task_data = redis_client.hgetall(f"download_task:{task_id}")
+        
+        if not task_data:
+            raise HTTPException(status_code=404, detail="Download not found")
+        
+        # Decode task data
+        status = task_data.get(b"status", b"").decode('utf-8')
+        zip_path = task_data.get(b"zip_path", b"").decode('utf-8')
+        zip_filename = task_data.get(b"zip_filename", b"").decode('utf-8')
+        
+        if status != "completed":
+            raise HTTPException(status_code=400, detail="Download not ready")
+        
+        if not zip_path or not os.path.exists(zip_path):
+            raise HTTPException(status_code=404, detail="Zip file not found")
+        
+        # Return file for download - file stays in downloads folder
+        from fastapi.responses import FileResponse
+        
+        response = FileResponse(
+            zip_path,
+            media_type='application/zip',
+            filename=zip_filename,
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{zip_filename}\""
+            },
+        )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error downloading file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/cleanup_download/{task_id}")
+def cleanup_download(task_id: str):
+    """
+    Manually cleanup download file and Redis entry. Only use for cancelled/failed tasks.
+    """
+    try:
+        # Get task info from Redis
+        task_data = redis_client.hgetall(f"download_task:{task_id}")
+        
+        if task_data:
+            zip_path = task_data.get(b"zip_path", b"").decode('utf-8')
+            
+            # Delete zip file
+            if zip_path and os.path.exists(zip_path):
+                os.remove(zip_path)
+                print(f"🗑️ Cleaned up zip file: {zip_path}")
+            
+            # Delete Redis entry
+            redis_client.delete(f"download_task:{task_id}")
+            print(f"🗑️ Cleaned up Redis entry: download_task:{task_id}")
+        
+        return {"status": "cleaned"}
+        
+    except Exception as e:
+        print(f"⚠️ Cleanup error: {e}")
+        # Don't raise error, just log it
+        return {"status": "error", "message": str(e)}
+
+@router.post("/cancel_download/{task_id}")
+def cancel_download(task_id: str):
+    """
+    Cancel an active download task and clean up resources.
+    """
+    try:
+        from celery.result import AsyncResult
+        from app.core.celery_app import celery_app
+        
+        # First, update Redis status to cancelled (task will check this)
+        redis_client.hset(f"download_task:{task_id}", "status", "cancelled")
+        print(f"📝 [Cancel] Set Redis status to cancelled for task: {task_id}")
+        
+        # Get task info from Redis for cleanup
+        task_data = redis_client.hgetall(f"download_task:{task_id}")
+        
+        # Try to revoke the Celery task
+        try:
+            # Revoke with terminate=True to kill the task
+            celery_app.control.revoke(task_id, terminate=True, signal='SIGTERM')
+            print(f"🚫 [Cancel] Revoked Celery task (SIGTERM): {task_id}")
+            
+            # Give it a moment, then try SIGKILL if still running
+            import time
+            time.sleep(0.5)
+            celery_app.control.revoke(task_id, terminate=True, signal='SIGKILL')
+            print(f"🚫 [Cancel] Revoked Celery task (SIGKILL): {task_id}")
+        except Exception as revoke_error:
+            print(f"⚠️ [Cancel] Error revoking task (may already be completed): {revoke_error}")
+        
+        # Clean up partial zip file if exists
+        if task_data:
+            zip_path = task_data.get(b"zip_path", b"").decode('utf-8')
+            
+            if zip_path and os.path.exists(zip_path):
+                try:
+                    os.remove(zip_path)
+                    print(f"🗑️ [Cancel] Deleted partial zip file: {zip_path}")
+                except Exception as file_error:
+                    print(f"⚠️ [Cancel] Could not delete zip file: {file_error}")
+        
+        # Clean up Redis entry
+        redis_client.delete(f"download_task:{task_id}")
+        print(f"🗑️ [Cancel] Cleaned up Redis entry: download_task:{task_id}")
+        
+        return {"status": "cancelled", "task_id": task_id}
+        
+    except Exception as e:
+        print(f"❌ [Cancel] Error cancelling download: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
