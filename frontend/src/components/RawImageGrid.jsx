@@ -316,9 +316,9 @@ export default function RawImageGrid({
               Try searching for something else!
             </p>
           ) : (
-            <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
-              Upload some RAW files to get started!
-            </p>
+          <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
+            Upload some RAW files to get started!
+          </p>
           )}
         </div>
       </div>

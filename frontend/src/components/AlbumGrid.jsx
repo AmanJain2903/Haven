@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause } from "lucide-react";
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { processTimelineData } from "../utils/timelineUtils";
 import ImageViewer from "./ImageViewer";
@@ -17,7 +17,7 @@ import DeleteButton from "./DeleteButton";
 import EditAlbumModal from "./EditAlbumModal";
 import DeleteAlbumModal from "./DeleteAlbumModal";
 import AddFilesToAlbumModal from "./AddFilesToAlbumModal";
-import { Download, Edit, Trash2, Plus, Image as ImageIcon, ArrowLeft, Folder, HardDrive, Clock, RefreshCw, MapPin, Video, FileImage, Info, ImagePlus, X, Frame, XCircle } from "lucide-react";
+import { Download, Edit, Trash2, Plus, Image as ImageIcon, ArrowLeft, Folder, HardDrive, Clock, RefreshCw, MapPin, Video, FileImage, Info, ImagePlus, X, Frame, XCircle, Files, Camera, Image, VideoIcon } from "lucide-react";
 import { format } from "date-fns";
 import SearchBar from "./SearchBar";
 
@@ -817,6 +817,8 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
   const [isSlideshowActive, setIsSlideshowActive] = useState(false);
   const [isSlideshowPaused, setIsSlideshowPaused] = useState(false);
 
+  const [mediaFilter, setMediaFilter] = useState("all");
+
   const LIMIT = 500;
 
   // Sync external search query - always keep in sync with parent
@@ -906,6 +908,68 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
     setTimeline([]);
   }, [searchQuery]);
 
+  const handleMediaFilterChange = (newMediaFilter) => {
+    setMediaFilter(newMediaFilter);
+    setSkip(0);
+    setHasMore(true);
+    setTimeline([]); 
+    setTotalCount(0);
+  };
+
+  const loadAlbum = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getAlbum(albumId);
+      setAlbum(data);
+    } catch (err) {
+      console.error("Error loading album:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadTimeline = useCallback(async (currentSkip = skip) => {
+    setLoadingTimeline(true);
+    try {
+      const response = await api.getAlbumTimeline(albumId, currentSkip, LIMIT, mediaFilter);
+      if (currentSkip === 0) {
+        setTimeline(response.timeline || []);
+      } else {
+        setTimeline(prev => [...prev, ...(response.timeline || [])]);
+      }
+      // Get total count from response headers
+      setTotalCount(response.total || 0);
+      setHasMore(response.timeline && response.timeline.length === LIMIT);
+    } catch (err) {
+      console.error("Error loading timeline:", err);
+    } finally {
+      setLoadingTimeline(false);
+    }
+  }, [albumId, skip, mediaFilter, LIMIT]);
+
+  const searchTimeline = useCallback(async (currentSkip = skip, queryToUse = null) => {
+    setLoadingTimeline(true);
+    try {
+      // Use provided query, or fall back to current state, or external prop
+      const currentQuery = queryToUse || searchQuery || externalSearchQuery;
+      const response = await api.searchAlbums(albumId, currentQuery, currentSkip, LIMIT, mediaFilter);
+      if (currentSkip === 0) {
+        setTimeline(response.albums || []);
+      } else {
+        setTimeline(prev => [...prev, ...(response.albums || [])]);
+      }
+      setTotalCount(response.total || 0);
+      setHasMore(response.albums && response.albums.length === LIMIT);
+    } catch (err) {
+      console.error("Error searching timeline:", err);
+      setTimeline([]);
+      setTotalCount(0);
+      setHasMore(false);
+    } finally {
+      setLoadingTimeline(false);
+    }
+  }, [albumId, skip, searchQuery, externalSearchQuery, mediaFilter, LIMIT]);
+
   // Load timeline when skip changes (after reset) or when albumId/searchQuery changes
   useEffect(() => {
     if (!albumId) return;
@@ -928,61 +992,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
         loadTimeline(skip);
       }
     }
-  }, [albumId, searchQuery, externalSearchQuery, skip]);
-
-  const loadAlbum = async () => {
-    setLoading(true);
-    try {
-      const data = await api.getAlbum(albumId);
-      setAlbum(data);
-    } catch (err) {
-      console.error("Error loading album:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadTimeline = async (currentSkip = skip) => {
-    setLoadingTimeline(true);
-    try {
-      const response = await api.getAlbumTimeline(albumId, currentSkip, LIMIT);
-      if (currentSkip === 0) {
-        setTimeline(response.timeline || []);
-      } else {
-        setTimeline(prev => [...prev, ...(response.timeline || [])]);
-      }
-      // Get total count from response headers
-      setTotalCount(response.total || 0);
-      setHasMore(response.timeline && response.timeline.length === LIMIT);
-    } catch (err) {
-      console.error("Error loading timeline:", err);
-    } finally {
-      setLoadingTimeline(false);
-    }
-  };
-
-  const searchTimeline = async (currentSkip = skip, queryToUse = null) => {
-    setLoadingTimeline(true);
-    try {
-      // Use provided query, or fall back to current state, or external prop
-      const currentQuery = queryToUse || searchQuery || externalSearchQuery;
-      const response = await api.searchAlbums(albumId, currentQuery, currentSkip, LIMIT);
-      if (currentSkip === 0) {
-        setTimeline(response.albums || []);
-      } else {
-        setTimeline(prev => [...prev, ...(response.albums || [])]);
-      }
-      setTotalCount(response.total || 0);
-      setHasMore(response.albums && response.albums.length === LIMIT);
-    } catch (err) {
-      console.error("Error searching timeline:", err);
-      setTimeline([]);
-      setTotalCount(0);
-      setHasMore(false);
-    } finally {
-      setLoadingTimeline(false);
-    }
-  };
+  }, [albumId, searchQuery, externalSearchQuery, skip, mediaFilter, loadTimeline, searchTimeline]);
 
   const handleLoadMore = () => {
     if (!loadingTimeline && hasMore) {
@@ -1197,6 +1207,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
     const fileIdNum = Number(fileId);
     
     const result = normalizedCoverType === normalizedFileType && coverId === fileIdNum;
+
     
     // Debug logging
     if (result) {
@@ -1206,26 +1217,13 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
     return result;
   };
 
-  const Footer = () => {
-    return loadingTimeline && hasMore ? (
-      <div className="py-8 flex justify-center w-full">
-        <div className="w-8 h-8 border-4 border-purple-600/30 border-t-purple-600 rounded-full animate-spin" />
-      </div>
-    ) : null;
+  const getMediaTypeLabel = () => {
+    if (mediaFilter === "all") return "items";
+    if (mediaFilter === "photos") return "photos";
+    if (mediaFilter === "videos") return "videos";
+    if (mediaFilter === "raw") return "RAW images";
+    return "items";
   };
-
-  if (loading || !album) {
-    return (
-      <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-600/30 dark:border-cyan-400/30 border-t-purple-600 dark:border-t-cyan-400 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-600 dark:text-white/50 text-lg">
-            Loading album...
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -1253,8 +1251,8 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
             Back to Albums
           </motion.button>
 
-          {/* Edit and Delete buttons - only show on no files page */}
-          {totalCount === 0 && (
+          {/* Edit and Delete buttons - only show on empty album */}
+          {album && album.album_total_count === 0 && (
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setIsEditModalOpen(true)}
@@ -1283,7 +1281,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
         </motion.div>
 
         {/* Header */}
-        {!loadingTimeline && timeline.length !== 0 ? (
+        {album && album.album_total_count > 0 ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1499,24 +1497,92 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
                 {album.album_description}
               </p>
             )}
-            {totalCount > 0 && (
+            {album && album.album_total_count > 0 && (
               <p className="text-slate-600 dark:text-white/50 text-sm mt-2">
                 <span className="font-semibold text-purple-600 dark:text-cyan-400">
               {totalCount}
             </span>{" "}
-                {totalCount === 1 ? "item" : "items"} {searchQuery ? "found" : `in ${album.album_name}`}
+                {mediaFilter === 'all' ? "items" : mediaFilter === 'photos' ? "photos" : mediaFilter === 'videos' ? "videos" : "RAW images"} {`in ${album.album_name}`}
               </p>
             )}
           </div>
         </motion.div>
     ) : null}
 
+    {/* Filter Pills */}
+    {album && album.album_total_count > 0 ? (
+    <div className="flex items-center gap-3">
+          <motion.button
+            onClick={() => handleMediaFilterChange('all')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'all'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Files className="w-4 h-4" /> <span className="text-sm font-medium">All Media</span>
+          </motion.button>
+          <motion.button
+            onClick={() => handleMediaFilterChange('photos')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'photos'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Image className="w-4 h-4" />
+            <span className="text-sm font-medium">Photos</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => handleMediaFilterChange('videos')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'videos'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Video className="w-4 h-4" />
+            <span className="text-sm font-medium">Videos</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => handleMediaFilterChange('raw')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'raw'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Camera className="w-4 h-4" />
+            <span className="text-sm font-medium">RAW</span>
+          </motion.button>
+        </div>
+        ) : null}
+
+        {loading || !album || loadingTimeline ? (
+            (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="w-16 h-16 border-4 border-purple-600/30 dark:border-cyan-400/30 border-t-purple-600 dark:border-t-cyan-400 rounded-full animate-spin mx-auto mb-4" />
+                  <p className="text-slate-600 dark:text-white/50 text-lg">
+                    Loading album...
+                  </p>
+                </div>
+              </div>
+            )
+          ) : null}
+
         {/* Timeline Grid or No Files Page */}
-        {loadingTimeline && timeline.length === 0 ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="w-8 h-8 border-4 border-purple-600/30 border-t-purple-600 rounded-full animate-spin" />
-          </div>
-        ) : totalCount === 0 ? (
+        {album && album.album_total_count === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1532,7 +1598,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
                 <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
                   {album.album_name}
                 </h2>
-                {album.album_total_count === 0 && (
+                {album && album.album_total_count === 0 && (
                   <p className="text-slate-600 dark:text-white/70 text-base">
                     This is an empty album. Add files to it to get started.
                   </p>
@@ -1555,12 +1621,25 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
               </div>
             </div>
           </motion.div>
-        ) : timeline.length === 0 ? (
-          <div className="flex items-center justify-center h-64">
+        ) : timeline.length === 0 && !loadingTimeline && album ? (
+          <div className="mt-16 flex items-center justify-center">
+          <div className="text-center">
             <p className="text-slate-600 dark:text-white/50 text-lg">
-              {searchQuery ? "No results found" : "No media in this album"}
+              {searchQuery 
+                ? `No "${formatSearchQuery(searchQuery)}" ${getMediaTypeLabel()} found in ${album.album_name}`
+                : `No ${getMediaTypeLabel()} in ${album.album_name}`}
             </p>
+            {searchQuery ? (
+              <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
+                Try searching for something else!
+              </p>
+            ) : (
+              <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
+                Mark your favorite {getMediaTypeLabel()} with ♥ to see them here!
+              </p>
+            )}
           </div>
+        </div>
         ) : (
           <Virtuoso
             useWindowScroll
@@ -1568,7 +1647,6 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
             data={timelineRows}
             overscan={500}
             endReached={handleLoadMore}
-            components={{ Footer }}
             itemContent={(index, row) => {
               if (row.type === "year") {
                 return (
@@ -1715,14 +1793,16 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
       )}
 
       {/* Edit Album Modal */}
+      {album ? (
       <EditAlbumModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         onSuccess={handleEditSuccess}
         albumId={albumId}
       />
-
+      ) : null}
       {/* Delete Album Modal */}
+      {album ? (
       <DeleteAlbumModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
@@ -1734,8 +1814,9 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
         hasActiveDownload={hasActiveDownload}
         cancelAlbumDownload={cancelAlbumDownload}
       />
-
+      ) : null} 
       {/* Choose Album Cover Modal */}
+      {album ? (
       <ChooseAlbumCoverModal
         isOpen={isChooseCoverModalOpen}
         onClose={() => setIsChooseCoverModalOpen(false)}
@@ -1745,6 +1826,7 @@ export default function AlbumGrid({ albumId, onClose, onFavoriteToggle, onAlbumU
         currentCoverId={currentCover.id}
         onSetCover={handleSetCover}
       />
+      ) : null}
 
       {/* Add Files to Album Modal */}
       <AddFilesToAlbumModal

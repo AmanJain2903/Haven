@@ -134,11 +134,30 @@ def get_data_breakdown(path: str):
 
 # 7. GET PROCESSED FILES INFORMATION
 @router.get("/processed_files_information", response_model=dict)
-def get_processed_files_information(path: str, db: Session = Depends(get_db)):
+def get_processed_files_information(db: Session = Depends(get_db)):
     """
     Gets the processed files information from the haven vault.
     """
-    if not path or not os.path.exists(path):
+        
+    try:
+        albums_count = db.query(models.Albums).count()
+        processed_images_count = db.query(models.Image).count()
+        processed_videos_count = db.query(models.Video).count()
+        processed_raw_count = db.query(models.RawImage).count()
+        processed_total_files_count = processed_images_count + processed_videos_count + processed_raw_count
+        images = db.query(models.Image).all()
+        videos = db.query(models.Video).all()
+        raw_images = db.query(models.RawImage).all()
+        processed_total_files_size = sum(image.file_size for image in images) + sum(video.file_size for video in videos) + sum(raw_image.file_size for raw_image in raw_images)
+        return {
+            "albums_count": albums_count,
+            "processed_images_count": processed_images_count,
+            "processed_videos_count": processed_videos_count,
+            "processed_raw_count": processed_raw_count,
+            "processed_total_files_count": processed_total_files_count,
+            "processed_total_files_size": processed_total_files_size
+        }
+    except Exception as e:
         return {
             "albums_count": None,
             "processed_images_count": None,
@@ -147,24 +166,6 @@ def get_processed_files_information(path: str, db: Session = Depends(get_db)):
             "processed_total_files_count": None,
             "processed_total_files_size": None
             }
-    
-    albums_count = db.query(models.Albums).count()
-    processed_images_count = db.query(models.Image).count()
-    processed_videos_count = db.query(models.Video).count()
-    processed_raw_count = db.query(models.RawImage).count()
-    processed_total_files_count = processed_images_count + processed_videos_count + processed_raw_count
-    images = db.query(models.Image).all()
-    videos = db.query(models.Video).all()
-    raw_images = db.query(models.RawImage).all()
-    processed_total_files_size = sum(image.file_size for image in images) + sum(video.file_size for video in videos) + sum(raw_image.file_size for raw_image in raw_images)
-    return {
-        "albums_count": albums_count,
-        "processed_images_count": processed_images_count,
-        "processed_videos_count": processed_videos_count,
-        "processed_raw_count": processed_raw_count,
-        "processed_total_files_count": processed_total_files_count,
-        "processed_total_files_size": processed_total_files_size
-    }
 
 # 8. GET METADATA INFORMATION
 @router.get("/metadata_information", response_model=dict)
