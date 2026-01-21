@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Play, Pause } from "lucide-react";
+import { Play, Pause, Files, Image, Video, Camera } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { processTimelineData } from "../utils/timelineUtils";
@@ -481,12 +481,29 @@ export default function FavoritesGrid({
   statusCode,
   onFavoriteToggle,
   onLocationUpdate,
-  onDelete
+  onDelete,
+  mediaFilter: controlledMediaFilter,
+  onMediaFilterChange,
 }) {
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
+  const [mediaFilterState, setMediaFilterState] = useState(controlledMediaFilter || 'all');
+  const mediaFilter = controlledMediaFilter ?? mediaFilterState;
   const virtuosoRef = useRef(null);
   const previousIndexRef = useRef(null);
+
+  const handleFilterChange = (nextFilter) => {
+    if (controlledMediaFilter === undefined) {
+      setMediaFilterState(nextFilter);
+    }
+    onMediaFilterChange?.(nextFilter);
+    // Close viewer & modals on filter change (prevents index mismatch)
+    setSelectedMedia(null);
+    setIsAddToAlbumModalOpen(false);
+    try {
+      window.scrollTo(0, 0);
+    } catch {}
+  };
 
   const sortedFavorites = useMemo(() => {
     return [...favorites].sort((a, b) => {
@@ -495,6 +512,15 @@ export default function FavoritesGrid({
       return dateB - dateA; // Descending (Newest first)
     });
   }, [favorites]);
+
+  // Match MapView's label behavior
+  const getMediaTypeLabel = () => {
+    if (mediaFilter === "all") return "items";
+    if (mediaFilter === "photos") return "photos";
+    if (mediaFilter === "videos") return "videos";
+    if (mediaFilter === "raw") return "RAW images";
+    return "items";
+  };
 
   // Process favorites into timeline rows
   const timelineRows = useMemo(() => processTimelineData(sortedFavorites, 5), [sortedFavorites]);
@@ -599,20 +625,6 @@ export default function FavoritesGrid({
     ) : null;
   };
 
-  // --- Loading State ---
-  if (loading && favorites.length === 0) {
-    return (
-      <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-600/30 dark:border-cyan-400/30 border-t-purple-600 dark:border-t-cyan-400 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-600 dark:text-white/50 text-lg">
-            Loading your loved items...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // --- Storage Unavailable State ---
   if (statusCode === '503') {
     return (
@@ -624,30 +636,6 @@ export default function FavoritesGrid({
           <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
             Please configure Haven Vault to get started!
           </p>
-        </div>
-      </div>
-    );
-  }
-
-  // --- Empty State ---
-  if (!loading && (!favorites || favorites.length === 0)) {
-    return (
-      <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-slate-600 dark:text-white/50 text-lg">
-            {searchQuery 
-              ? `No "${formatSearchQuery(searchQuery)}" found in your loved items`
-              : "No loved items yet"}
-          </p>
-          {searchQuery ? (
-            <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
-              Try searching for something else!
-            </p>
-          ) : (
-            <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
-              Mark your favorite photos, videos, or RAW files with ♥ to see them here!
-            </p>
-          )}
         </div>
       </div>
     );
@@ -678,20 +666,115 @@ bg-clip-text text-transparent mb-2"
             <span className="font-semibold text-purple-600 dark:text-cyan-400">
               {totalCount}
             </span>{" "}
-            {searchQuery ? "search results" : "loved items"} in Haven Vault
+            {`loved ${getMediaTypeLabel()}`} in Haven Vault
           </p>
         </div>
+        
       </motion.div>
 
-      {/* VIRTUALIZED TIMELINE */}
-      <Virtuoso
-        useWindowScroll
-        ref={virtuosoRef}
-        data={timelineRows}
-        overscan={500}
-        endReached={() => { if (hasMore && !loading) onLoadMore(); }}
-        components={{ Footer }}
-        itemContent={(index, row) => {
+      {/* Filter Pills */}
+      <div className="flex items-center gap-3">
+          <motion.button
+            onClick={() => handleFilterChange('all')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'all'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Files className="w-4 h-4" />
+            <span className="text-sm font-medium">All Media</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => handleFilterChange('photos')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'photos'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Image className="w-4 h-4" />
+            <span className="text-sm font-medium">Photos</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => handleFilterChange('videos')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'videos'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Video className="w-4 h-4" />
+            <span className="text-sm font-medium">Videos</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => handleFilterChange('raw')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`px-4 py-2 rounded-full flex items-center gap-2 transition-all duration-200 ${
+              mediaFilter === 'raw'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 dark:from-cyan-500 dark:to-teal-500 text-white shadow-lg'
+                : 'glass-panel text-slate-700 dark:text-white/70 hover:bg-slate-200/50 dark:hover:bg-white/10'
+            }`}
+          >
+            <Camera className="w-4 h-4" />
+            <span className="text-sm font-medium">RAW</span>
+          </motion.button>
+        </div>
+
+      {/* Inline loading indicator to avoid full-page reset on filter change */}
+      {loading && favorites.length === 0 && (
+        <div className="mt-10 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-purple-600/30 dark:border-cyan-400/30 border-t-purple-600 dark:border-t-cyan-400 rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-slate-600 dark:text-white/50 text-sm">Loading your loved {getMediaTypeLabel()}...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Empty State (shown inline to keep header & filters visible) */}
+      {!loading && (!favorites || favorites.length === 0) && (
+        <div className="mt-16 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-slate-600 dark:text-white/50 text-lg">
+              {searchQuery 
+                ? `No "${formatSearchQuery(searchQuery)}" found in your loved ${getMediaTypeLabel()}`
+                : `No loved ${getMediaTypeLabel()} yet`}
+            </p>
+            {searchQuery ? (
+              <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
+                Try searching for something else!
+              </p>
+            ) : (
+              <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
+                Mark your favorite {getMediaTypeLabel()} with ♥ to see them here!
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* When there is content, render the timeline */}
+      {favorites && favorites.length > 0 && (
+        <>
+          {/* VIRTUALIZED TIMELINE */}
+          <Virtuoso
+            useWindowScroll
+            ref={virtuosoRef}
+            data={timelineRows}
+            overscan={500}
+            endReached={() => { if (hasMore && !loading) onLoadMore?.(mediaFilter); }}
+            components={{ Footer }}
+            itemContent={(index, row) => {
           // 1. Year Header
           if (row.type === "year") {
             return (
@@ -756,9 +839,11 @@ bg-clip-text text-transparent mb-2"
             );
           }
 
-          return null;
-        }}
-      />
+              return null;
+            }}
+          />
+        </>
+      )}
 
       {/* Media Viewer - Render appropriate viewer based on type */}
       {selectedMedia && selectedMedia.type === "image" && (

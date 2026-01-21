@@ -92,27 +92,42 @@ class Settings(BaseSettings):
     
     @property
     def THUMBNAIL_DIR(self):
-        os.makedirs(os.path.join(self.APP_DATA_DIR, "thumbnails"), exist_ok=True)
+        try:
+            os.makedirs(os.path.join(self.APP_DATA_DIR, "thumbnails"), exist_ok=True)
+        except Exception as e:
+            pass
         return os.path.join(self.APP_DATA_DIR, "thumbnails")
 
     @property
     def VIDEO_THUMBNAIL_DIR(self):
-        os.makedirs(os.path.join(self.APP_DATA_DIR, "video_thumbnails"), exist_ok=True)
+        try:
+            os.makedirs(os.path.join(self.APP_DATA_DIR, "video_thumbnails"), exist_ok=True)
+        except Exception as e:
+            pass
         return os.path.join(self.APP_DATA_DIR, "video_thumbnails")
 
     @property
     def VIDEO_PREVIEW_DIR(self):
-        os.makedirs(os.path.join(self.APP_DATA_DIR, "video_previews"), exist_ok=True)
+        try:
+            os.makedirs(os.path.join(self.APP_DATA_DIR, "video_previews"), exist_ok=True)
+        except Exception as e:
+            pass
         return os.path.join(self.APP_DATA_DIR, "video_previews")
     
     @property
     def RAW_THUMBNAIL_DIR(self):
-        os.makedirs(os.path.join(self.APP_DATA_DIR, "raw_thumbnails"), exist_ok=True)
+        try:
+            os.makedirs(os.path.join(self.APP_DATA_DIR, "raw_thumbnails"), exist_ok=True)
+        except Exception as e:
+            pass
         return os.path.join(self.APP_DATA_DIR, "raw_thumbnails")
     
     @property
     def RAW_PREVIEW_DIR(self):
-        os.makedirs(os.path.join(self.APP_DATA_DIR, "raw_previews"), exist_ok=True)
+        try:
+            os.makedirs(os.path.join(self.APP_DATA_DIR, "raw_previews"), exist_ok=True)
+        except Exception as e:
+            pass
         return os.path.join(self.APP_DATA_DIR, "raw_previews")
 
     class Config:

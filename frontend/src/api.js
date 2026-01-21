@@ -202,9 +202,9 @@ export const api = {
   // Favorites API ENDPOINTS
   // ------------------------------------------------------------
   // Fetch all favorites for timeline view
-  getAllFavoritesThumbnails: async (skip=0, limit=500) => {
+  getAllFavoritesThumbnails: async (skip=0, limit=500, mediaFilter="all") => {
     const response = await axios.get(`${API_URL}/favorites/timeline`, {
-      params: { skip: skip, limit: limit }
+      params: { skip: skip, limit: limit, mediaFilter: mediaFilter }
     });
     return {
       favorites: response.data,
@@ -265,9 +265,10 @@ export const api = {
   },
 
   // Search favorites
-  searchFavorites: async (query, skip=0, limit=500) => {
+  // Note: backend may ignore mediaFilter if not implemented server-side; frontend can still filter results.
+  searchFavorites: async (query, skip=0, limit=500, mediaFilter="all") => {
     const response = await axios.post(`${API_URL}/intelligence/search/favorites`, null, {
-      params: { query: query, skip: skip, limit: limit }
+      params: { query: query, skip: skip, limit: limit, mediaFilter: mediaFilter }
     });
     return {
       favorites: response.data,
@@ -308,9 +309,9 @@ export const api = {
   },
 
   // Search albums
-  searchAlbums: async (albumId, query, skip=0, limit=500) => {
+  searchAlbums: async (albumId, query, skip=0, limit=500, mediaFilter="all") => {
     const response = await axios.post(`${API_URL}/intelligence/search/albums/${albumId}`, null, {
-      params: { query: query, skip: skip, limit: limit }
+      params: { query: query, skip: skip, limit: limit, mediaFilter: mediaFilter }
     });
     return {
       albums: response.data,
@@ -412,9 +413,9 @@ export const api = {
     return response.data;
   },
 
-  getAlbumTimeline: async (albumId, skip=0, limit=500) => {
+  getAlbumTimeline: async (albumId, skip=0, limit=500, mediaFilter="all") => {
     const response = await axios.get(`${API_URL}/albums/timeline/${albumId}`, {
-      params: { skip: skip, limit: limit }
+      params: { skip: skip, limit: limit, mediaFilter: mediaFilter }
     });
     return {
       timeline: response.data,
@@ -547,10 +548,8 @@ export const api = {
     return response.data;
   },
 
-  getProcessedFilesInformation: async (path) => {
-    const response = await axios.get(`${API_URL}/dashboard/processed_files_information`, {
-      params: { path: path }
-    });
+  getProcessedFilesInformation: async () => {
+    const response = await axios.get(`${API_URL}/dashboard/processed_files_information`);
     return response.data;
   },
 

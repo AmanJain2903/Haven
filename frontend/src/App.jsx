@@ -75,6 +75,7 @@ function App() {
   const [favoritesHasMore, setFavoritesHasMore] = useState(true);
   const [favoritesTotalCount, setFavoritesTotalCount] = useState(0);
   const [favoritesStatusCode, setFavoritesStatusCode] = useState('');
+  const [favoritesMediaFilter, setFavoritesMediaFilter] = useState('all'); // 'all' | 'photos' | 'videos' | 'raw'
 
   // Progress bars state for background operations (supports multiple)
   const [progressBars, setProgressBars] = useState([]);
@@ -1326,9 +1327,9 @@ function App() {
       try {
         let response;
         if (searchQuery) {
-          response = await api.searchFavorites(searchQuery, 0, favoritesSkip);
+          response = await api.searchFavorites(searchQuery, 0, favoritesSkip, favoritesMediaFilter);
         } else {
-          response = await api.getAllFavoritesThumbnails(0, favoritesSkip);
+          response = await api.getAllFavoritesThumbnails(0, favoritesSkip, favoritesMediaFilter);
         }
         
         const { favorites: reloadedFavorites, total } = response;
@@ -1341,7 +1342,17 @@ function App() {
         setFavoritesLoading(false);
       }
     }
-  }, [activeView, skip, videoSkip, rawSkip, allMediaSkip, favoritesSkip, searchQuery]);
+  }, [activeView, skip, videoSkip, rawSkip, allMediaSkip, favoritesSkip, searchQuery, favoritesMediaFilter]);
+
+  const handleFavoritesMediaFilterChange = useCallback((nextFilter) => {
+    setFavoritesMediaFilter(nextFilter);
+    // Reset favorites pagination so it reloads with the new filter
+    setFavorites([]);
+    setFavoritesSkip(0);
+    setFavoritesHasMore(true);
+    setFavoritesTotalCount(0);
+    setFavoritesStatusCode('');
+  }, []);
 
   // Handle delete - remove item from state and update count
   // Check if an album has an active download
@@ -1647,7 +1658,7 @@ function App() {
       if (searchQuery) {
         // Active search exists, search favorites
         setFavoritesLoading(true);
-        api.searchFavorites(searchQuery, 0, LIMIT)
+        api.searchFavorites(searchQuery, 0, LIMIT, favoritesMediaFilter)
           .then(response => {
             const { favorites: results, total } = response;
             setFavorites(results);
@@ -1667,7 +1678,7 @@ function App() {
         loadMoreFavorites();
       }
     }
-  }, [activeView]); // Only runs when activeView changes (including initial mount)
+  }, [activeView, favoritesMediaFilter, searchQuery]); // Also re-run on favorites filter change
 
   // Handle Search
   const handleSearch = async (query) => {
@@ -1700,124 +1711,7 @@ function App() {
     setFavoritesSkip(0);
     setFavoritesHasMore(true);
     
-    // 3. Search only for the current active view
-    if (activeView === 'all') {
-      setAllMediaLoading(true);
-      
-      try {
-        let response = await api.searchAllMedia(query, 0, LIMIT);
-        const { allMedia: results, total } = response;
-        setAllMedia(results);
-        setAllMediaTotalCount(total);
-        
-        if (results.length < LIMIT) {
-          setAllMediaHasMore(false);
-        }
-        setAllMediaSkip(LIMIT);
-        
-      } catch (e) {
-        console.error('All media search error:', e);
-        if (e.response && e.response.status === 503) {
-          setAllMediaStatusCode('503');
-        }
-      } finally {
-        setAllMediaLoading(false);
-        window.scrollTo(0, 0);
-      }
-    } else if (activeView === 'favorites') {
-      setFavoritesLoading(true);
-      
-      try {
-        let response = await api.searchFavorites(query, 0, LIMIT);
-        const { favorites: results, total } = response;
-        setFavorites(results);
-        setFavoritesTotalCount(total);
-        
-        if (results.length < LIMIT) {
-          setFavoritesHasMore(false);
-        }
-        setFavoritesSkip(LIMIT);
-        
-      } catch (e) {
-        console.error('Favorites search error:', e);
-        if (e.response && e.response.status === 503) {
-          setFavoritesStatusCode('503');
-        }
-      } finally {
-        setFavoritesLoading(false);
-        window.scrollTo(0, 0);
-      }
-    } else if (activeView === 'raw') {
-      setRawLoading(true);
-      
-      try {
-        let response = await api.searchRawImages(query, 0, LIMIT);
-        const { rawImages: results, total } = response;
-        setRawImages(results);
-        setRawTotalCount(total);
-        
-        if (results.length < LIMIT) {
-          setRawHasMore(false);
-        }
-        setRawSkip(LIMIT);
-        
-      } catch (e) {
-        console.error('Raw image search error:', e);
-        if (e.response && e.response.status === 503) {
-          setRawStatusCode('503');
-        }
-      } finally {
-        setRawLoading(false);
-        window.scrollTo(0, 0);
-      }
-    } else if (activeView === 'videos') {
-      setVideoLoading(true);
-      
-      try {
-        let response = await api.searchVideos(query, 0, LIMIT);
-        const { videos: results, total } = response;
-        setVideos(results);
-        setVideoTotalCount(total);
-        
-        if (results.length < LIMIT) {
-          setVideoHasMore(false);
-        }
-        setVideoSkip(LIMIT);
-        
-      } catch (e) {
-        console.error('Video search error:', e);
-        if (e.response && e.response.status === 503) {
-          setVideoStatusCode('503');
-        }
-      } finally {
-        setVideoLoading(false);
-        window.scrollTo(0, 0);
-      }
-    } else {
-      // Default to photos
-      setLoading(true);
-      
-      try {
-        let response = await api.searchPhotos(query, 0, LIMIT);
-        const { photos: results, total } = response;
-        setPhotos(results);
-        setTotalCount(total);
-        
-        if (results.length < LIMIT) {
-          setHasMore(false);
-        }
-        setSkip(LIMIT);
-        
-      } catch (e) {
-        console.error('Photo search error:', e);
-        if (e.response && e.response.status === 503) {
-          setStatusCode('503');
-        }
-      } finally {
-        setLoading(false);
-        window.scrollTo(0, 0);
-      }
-    }
+    window.scrollTo(0, 0);
   };
 
   // Reset to all photos/videos
@@ -1878,7 +1772,7 @@ function App() {
     } else if (activeView === 'favorites') {
       setFavoritesLoading(true);
       try {
-        const response = await api.getAllFavoritesThumbnails(0, LIMIT);
+        const response = await api.getAllFavoritesThumbnails(0, LIMIT, favoritesMediaFilter);
         const { favorites: results, total } = response;
         setFavorites(results);
         setFavoritesTotalCount(total);
@@ -2095,21 +1989,22 @@ function App() {
   }, [allMediaSkip, allMediaLoading, allMediaHasMore, searchQuery]);
 
   // --- FAVORITES LOAD FUNCTION ---
-  const loadMoreFavorites = useCallback(async () => {
+  const loadMoreFavorites = useCallback(async (overrideFilter) => {
     if (favoritesLoading || !favoritesHasMore) return;
 
     setFavoritesLoading(true);
     try {
       let response;
+      const activeFilter = overrideFilter ?? favoritesMediaFilter;
       console.log(`Loading Favorites... Skip: ${favoritesSkip}, Limit: ${LIMIT}`);
       
       // BRANCH LOGIC: Check if we are searching or viewing timeline
       if (searchQuery) {
         // Load Search Results
-        response = await api.searchFavorites(searchQuery, favoritesSkip, LIMIT);
+        response = await api.searchFavorites(searchQuery, favoritesSkip, LIMIT, activeFilter);
       } else {
         // Load Normal Timeline
-        response = await api.getAllFavoritesThumbnails(favoritesSkip, LIMIT);
+        response = await api.getAllFavoritesThumbnails(favoritesSkip, LIMIT, activeFilter);
       }
       
       const { favorites: newFavorites, total } = response;
@@ -2141,12 +2036,13 @@ function App() {
     } finally {
       setFavoritesLoading(false);
     }
-  }, [favoritesSkip, favoritesLoading, favoritesHasMore, searchQuery]);
+  }, [favoritesSkip, favoritesLoading, favoritesHasMore, searchQuery, favoritesMediaFilter]);
 
 
   // Save active view to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('havenActiveView', activeView);
+    handleFavoritesMediaFilterChange('all');
     
     // Clear selected album when navigating away from albums
     if (activeView !== 'albums') {
@@ -2430,7 +2326,20 @@ function App() {
       ) : activeView === 'raw' ? (
         <RawImageGrid rawImages={rawImages} loading={rawLoading} searchQuery={searchQuery} onLoadMore={loadMoreRawImages} hasMore={rawHasMore} totalCount={rawTotalCount} statusCode={rawStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} onLocationUpdate={handleLocationUpdate} onDelete={handleDelete} />
       ) : activeView === 'favorites' ? (
-        <FavoritesGrid favorites={favorites} loading={favoritesLoading} searchQuery={searchQuery} onLoadMore={loadMoreFavorites} hasMore={favoritesHasMore} totalCount={favoritesTotalCount} statusCode={favoritesStatusCode} onFavoriteToggle={handleGlobalFavoriteToggle} onLocationUpdate={handleLocationUpdate} onDelete={handleDelete} />
+        <FavoritesGrid
+          favorites={favorites}
+          loading={favoritesLoading}
+          searchQuery={searchQuery}
+          onLoadMore={loadMoreFavorites}
+          hasMore={favoritesHasMore}
+          totalCount={favoritesTotalCount}
+          statusCode={favoritesStatusCode}
+          onFavoriteToggle={handleGlobalFavoriteToggle}
+          onLocationUpdate={handleLocationUpdate}
+          onDelete={handleDelete}
+          mediaFilter={favoritesMediaFilter}
+          onMediaFilterChange={handleFavoritesMediaFilterChange}
+        />
       ) : activeView === 'map' ? (
         <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)]">
           <div style={{ height: 'calc(100vh - 16rem)' }}>

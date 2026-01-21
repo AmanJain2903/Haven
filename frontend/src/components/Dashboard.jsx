@@ -318,26 +318,9 @@ export default function Dashboard({ startVaultDownload, cancelVaultDownload, has
           setIsConnected(false);
         }
       } else {
+        setHavenVaultPath(null);
         setIsConfigured(false);
         setIsConnected(false);
-        setIsAppDataConfigured(false);
-        setIsAppDataConnected(false);
-        setHavenAppDataPath(null);
-        setTotalSize(0);
-        setUsedSize(0);
-        setAvailableSize(0);
-        setPercentage(0);
-        setImagesCount(0);
-        setVideosCount(0);
-        setRawCount(0);
-        setTotalFilesCount(0);
-        setImagesSize(0);
-        setVideosSize(0);
-        setRawSize(0);
-        setTotalFilesSize(0);
-        setLastChecked(new Date().toLocaleTimeString());
-        setIsRefreshing(false);
-        return;
       }
 
       const appDataPath = await api.getHotStoragePath();
@@ -399,7 +382,7 @@ export default function Dashboard({ startVaultDownload, cancelVaultDownload, has
         setRawSize(0);
         setTotalFilesSize(0);
       }
-      const processedFilesInformation = await api.getProcessedFilesInformation(storagePath);
+      const processedFilesInformation = await api.getProcessedFilesInformation();
       if (processedFilesInformation) {
         setAlbumsCount(processedFilesInformation.albums_count);
         setProcessedImagesCount(processedFilesInformation.processed_images_count);
