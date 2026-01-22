@@ -1,90 +1,25 @@
-import os
-import rawpy
-import exiftool
-import numpy as np
-from PIL import Image
-from datetime import datetime
-from sqlalchemy.orm import Session
-from app.core.database import SessionLocal
-from app.models import RawImage
-from app.core.config import settings
+from app.core.utils import ensure_dirs, get_location_parts, format_shutter_speed
 from app.ml.clip_client import generate_embedding
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-from geopy.geocoders import Nominatim
-import hashlib
-import io
+from app.core.database import SessionLocal
+from app.core.constants import RAW_EXTS
+from app.core.config import settings
+from app.models import RawImage
+
 from sqlalchemy.exc import IntegrityError
+from datetime import datetime
 from PIL import ImageOps
-import json
-import subprocess
-import re
-from fractions import Fraction
+from PIL import Image
+import exiftool
+import hashlib
+import rawpy
+import io
+import os
 
 # Directory setup
 THUMBNAIL_DIR = settings.RAW_THUMBNAIL_DIR 
 PREVIEW_DIR = settings.RAW_PREVIEW_DIR
 
-# Define RAW extensions
-RAW_EXTS = {'.arw', '.cr2', '.cr3', '.dng', '.nef', '.orf', '.raf', '.rw2', '.srw', '.x3f'}
-
-def ensure_dirs():
-    os.makedirs(THUMBNAIL_DIR, exist_ok=True)
-    os.makedirs(PREVIEW_DIR, exist_ok=True)
-
-def format_shutter_speed(val):
-    """
-    Converts decimal exposure (0.00125) to fraction string (1/800).
-    """
-    if not val:
-        return None
-    try:
-        f_val = float(val)
-        if f_val >= 1:
-            return str(round(f_val, 1)).replace(".0", "") # e.g. "2" or "0.5" if long exposure
-        if f_val <= 0:
-            return str(val)
-        
-        # Calculate denominator
-        denom = round(1 / f_val)
-        return f"1/{denom}"
-    except:
-        return str(val)
-
-def parse_iso6709(geo_string):
-    """
-    Parses ISO6709 string from metadata (e.g., "+37.7749-122.4194/")
-    """
-    try:
-        match = re.match(r'([+-][0-9.]+)([+-][0-9.]+)', geo_string)
-        if match:
-            return float(match.group(1)), float(match.group(2))
-    except:
-        pass
-    return None, None
-
-def get_location_parts(latitude: float, longitude: float) -> dict:
-    """
-    Reverse geocode coordinates to get a human-readable location label.
-    (Reused from your video processor for consistency)
-    """
-    try:
-        geolocator = Nominatim(user_agent="haven_photo_manager")
-        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10, language='en')
-        
-        if not location or not location.raw.get('address'):
-            return None
-        
-        address = location.raw['address']
-        parts = { 'city': None, 'state': None, 'country': None }
-        
-        parts['city'] = address.get('city') or address.get('town') or address.get('village')
-        parts['state'] = address.get('state') or address.get('region')
-        parts['country'] = address.get('country')
-        
-        return parts
-    except Exception as e:
-        print(f"Geocoding error: {e}")
-        return None
+# --- HELPER FUNCTIONS ---
 
 def get_raw_metadata(file_path):
     """
@@ -154,7 +89,7 @@ def generate_assets_and_embed(file_path, filename):
     2. Generates Thumbnail and Preview files.
     3. Calculates CLIP embedding on the image data.
     """
-    ensure_dirs()
+    ensure_dirs([THUMBNAIL_DIR, PREVIEW_DIR])
     path_hash = hashlib.md5(file_path.encode('utf-8')).hexdigest()
     
     thumb_name = f"thumb_{path_hash}.jpg"
@@ -225,6 +160,8 @@ def generate_assets_and_embed(file_path, filename):
 
     return thumb_name, preview_name, embedding, width, height
 
+# --- MAIN WORKER FUNCTION ---
+
 def process_raw_file(full_path: str, filename: str):
     """
     Worker entry point for RAW images.
@@ -251,7 +188,13 @@ def process_raw_file(full_path: str, filename: str):
         # This is combined because we want to open the heavy RAW file only once
         thumb_name, preview_name, embedding, w, h = generate_assets_and_embed(full_path, filename)
 
-        if not thumb_name: 
+        if not embedding:
+            print(f"⚠️ Warning: Could not generate embedding for {filename}")
+            is_processed = False
+        else:
+            is_processed = True
+
+        if not thumb_name or not preview_name: 
             print(f"❌ Could not process image data for {filename}")
             return
 
@@ -291,7 +234,7 @@ def process_raw_file(full_path: str, filename: str):
             flash_fired=meta.get('flash_fired', False),
             
             embedding=embedding,
-            is_processed=True
+            is_processed=is_processed
         )
 
         try:

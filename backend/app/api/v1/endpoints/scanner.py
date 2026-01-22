@@ -1,12 +1,10 @@
-import os
-from fastapi import Depends, APIRouter, HTTPException
-from sqlalchemy.orm import Session
+from app.services.scanner import scan_directory_flat
 from app.core.database import get_db
 from app import models
 
-# Import the "Traffic Cop" scanner we just wrote
-# Ensure the function name in app/services/scanner.py matches this (scan_directory vs scan_directory_flat)
-from app.services.scanner import scan_directory_flat as scan_directory 
+from fastapi import Depends, APIRouter, HTTPException
+from sqlalchemy.orm import Session
+import os
 
 router = APIRouter()
 
@@ -29,8 +27,7 @@ def trigger_scan(db: Session = Depends(get_db)):
     try:
         # 3. Trigger the Traffic Cop
         # This function runs fast, dispatches Celery tasks, and returns the count of NEW items found.
-        # Note: We renamed it scan_directory_flat in the previous step, so I aliased it above.
-        queued_count = scan_directory(path, db)
+        queued_count = scan_directory_flat(path, db)
         
         return {
             "status": "success", 

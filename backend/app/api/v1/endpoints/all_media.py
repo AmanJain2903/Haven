@@ -1,80 +1,27 @@
-import os
+from app.core.constants import ALL_COLUMNS
+from app.core.database import get_db
+from app.core.config import settings
+from app import models
+
+from sqlalchemy import desc, case, literal, union_all, cast
 from fastapi import Depends, APIRouter, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, case, literal, union_all, cast
-from app.core.database import get_db
-from app import models
-from fastapi.responses import FileResponse
 from fastapi import HTTPException
 from typing import List
-import hashlib
-from app.core.config import settings
-from sqlalchemy.types import Integer, String, Float, Boolean, DateTime, BigInteger
-from pgvector.sqlalchemy import Vector
 import numpy as np
+import hashlib
+import os
 
 backend_url = settings.HOST_URL
 dimension = settings.CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION
 
 router = APIRouter()
 
-# "Master List" of all possible columns
-# Format: ("json_key", "model_attribute_name", "SQL Type")
-# If the attribute exists on the model, we use it. If not, we use NULL.
-ALL_COLUMNS = [
-    # --- Common ---
-    ("id", "id", Integer),
-    ("filename", "filename", String),
-    ("file_size", "file_size", BigInteger),
-    ("capture_date", "capture_date", DateTime),
-    ("width", "width", Integer),
-    ("height", "height", Integer),
-
-    # --- Favorite ---
-    ("is_favorite", "is_favorite", Boolean),
-    
-    # --- Location ---
-    ("city", "city", String),
-    ("state", "state", String),
-    ("country", "country", String),
-    ("latitude", "latitude", Float),
-    ("longitude", "longitude", Float),
-
-    # --- Exif ---
-    ("megapixels", "megapixels", Float),
-    ("iso", "iso", Integer),
-    ("f_number", "f_number", Float),
-    ("exposure_time", "exposure_time", String),
-    ("focal_length", "focal_length", Float),
-    
-    # --- Camera Gear (Commonish) ---
-    ("camera_make", "camera_make", String),
-    ("camera_model", "camera_model", String),
-
-    # --- Intelligence ---
-    ("is_processed", "is_processed", Boolean),
-    ("embedding", "embedding", Vector(dimension)),
-    
-    # --- RAW / Photo Specific ---
-    ("lens_make", "lens_make", String),
-    ("lens_model", "lens_model", String),
-    ("flash_fired", "flash_fired", Boolean),
-    ("extension", "extension", String), # Specific to RAW usually
-    
-    # --- Video Specific ---
-    ("duration", "duration", Float),
-    ("fps", "fps", Float),
-    ("codec", "codec", String),
-
-    # --- System ---
-    ("created_at", "created_at", DateTime),
-]
-
 @router.get("/timeline", response_model=List[dict])
 def get_all_media_timeline(
     response: Response,
     skip: int = 0, 
-    limit: int = 100,
+    limit: int = 500,
     db: Session = Depends(get_db)
 ):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"

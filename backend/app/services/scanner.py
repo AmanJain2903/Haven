@@ -1,14 +1,10 @@
-import os
-from sqlalchemy.orm import Session
-from app.models import Image, Video, RawImage
 from app.tasks import task_process_image, task_process_video, task_process_raw
+from app.core.constants import IMAGE_EXTS, VIDEO_EXTS, RAW_EXTS
+from app.models import Image, Video, RawImage
 from app.core.config import settings
+from sqlalchemy.orm import Session
 import redis
-
-# Define extensions for routing
-IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
-VIDEO_EXTS = {'.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm', '.mts', '.m2ts', '.3gp', '.3g2', '.wmv', '.flv', '.ogv'}
-RAW_EXTS = {'.arw', '.cr2', '.cr3', '.dng', '.nef', '.orf', '.raf', '.rw2', '.srw', '.x3f'}
+import os
 
 def scan_directory_flat(storage_root: str, db: Session):
     """

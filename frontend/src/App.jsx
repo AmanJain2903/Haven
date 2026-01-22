@@ -17,7 +17,7 @@ import UploadButton from './components/UploadButton';
 import InsufficientSpaceModal from './components/InsufficientSpaceModal';
 import { useTheme } from './contexts/ThemeContext';
 
-import { api, getBatchTaskStatus } from './api';
+import { api } from './api';
 
 function App() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -141,7 +141,7 @@ function App() {
 
         try {
           // Check task status
-          const status = await getBatchTaskStatus(taskInfo.taskId);
+          const status = await api.getBatchTaskStatus(taskInfo.taskId);
           console.log('📊 Restored task status:', status);
 
           // If still in progress, recreate the progress bar
@@ -179,7 +179,7 @@ function App() {
   const startPollingTask = useCallback((progressId, taskId, type, label, total) => {
     const pollInterval = setInterval(async () => {
       try {
-        const status = await getBatchTaskStatus(taskId);
+        const status = await api.getBatchTaskStatus(taskId);
         console.log(`📊 Task ${taskId} status:`, status);
 
         // Update progress bar
@@ -467,7 +467,7 @@ function App() {
           return;
         }
 
-        const status = await api.getVaultDownloadTaskStatus(taskId);
+        const status = await api.getHavenDownloadTaskStatus(taskId);
         const completed = status.completed || 0;
         const total = status.total || 0;
         const progress = status.progress || 0;
@@ -497,7 +497,7 @@ function App() {
           // Cleanup after a delay (give browser time to start download)
           setTimeout(async () => {
             try { 
-              await api.cleanupVaultDownload(taskId); 
+              await api.cleanupHavenDownload(taskId); 
             } catch (e) { 
               console.error('Cleanup error:', e); 
             }
@@ -537,7 +537,7 @@ function App() {
           // Cleanup after a delay (give browser time to start download)
           setTimeout(async () => {
             try { 
-              await api.cleanupVaultDownload(taskId); 
+              await api.cleanupHavenDownload(taskId); 
             } catch (e) { 
               console.error('Cleanup error:', e); 
             }
@@ -638,7 +638,7 @@ function App() {
         return;
       }
 
-      const result = await api.startVaultDownload();
+      const result = await api.startHavenDownloadTask('vault');
       const taskId = result.task_id;
       const progressId = `vault_${taskId}`;
       const albumName = 'Haven Vault';
@@ -707,7 +707,7 @@ function App() {
           return;
         }
 
-        const status = await api.getAppDataDownloadTaskStatus(taskId);
+        const status = await api.getHavenDownloadTaskStatus(taskId);
         const completed = status.completed || 0;
         const total = status.total || 0;
         const progress = status.progress || 0;
@@ -737,7 +737,7 @@ function App() {
           // Cleanup after a delay
           setTimeout(async () => {
             try { 
-              await api.cleanupAppDataDownload(taskId); 
+              await api.cleanupHavenDownload(taskId); 
             } catch (e) { 
               console.error('Cleanup error:', e); 
             }
@@ -777,7 +777,7 @@ function App() {
           // Cleanup after a delay
           setTimeout(async () => {
             try { 
-              await api.cleanupAppDataDownload(taskId); 
+              await api.cleanupHavenDownload(taskId); 
             } catch (e) { 
               console.error('Cleanup error:', e); 
             }
@@ -827,7 +827,7 @@ function App() {
           return;
         }
 
-        const status = await api.getMetadataDownloadTaskStatus(taskId);
+        const status = await api.getHavenDownloadTaskStatus(taskId);
         const completed = status.completed || 0;
         const total = status.total || 0;
         const progress = status.progress || 0;
@@ -857,7 +857,7 @@ function App() {
           // Cleanup after a delay
           setTimeout(async () => {
             try { 
-              await api.cleanupMetadataDownload(taskId); 
+              await api.cleanupHavenDownload(taskId); 
             } catch (e) { 
               console.error('Cleanup error:', e); 
             }
@@ -897,7 +897,7 @@ function App() {
           // Cleanup after a delay
           setTimeout(async () => {
             try { 
-              await api.cleanupMetadataDownload(taskId); 
+              await api.cleanupHavenDownload(taskId); 
             } catch (e) { 
               console.error('Cleanup error:', e); 
             }
@@ -932,7 +932,7 @@ function App() {
         return;
       }
 
-      const result = await api.startAppDataDownload();
+      const result = await api.startHavenDownloadTask('app_data');
       const taskId = result.task_id;
       const progressId = `appdata_${taskId}`;
       const albumName = 'Haven App Data';
@@ -988,7 +988,7 @@ function App() {
         return;
       }
 
-      const result = await api.startMetadataDownload();
+      const result = await api.startHavenDownloadTask('metadata');
       const taskId = result.task_id;
       const progressId = `metadata_${taskId}`;
       const albumName = 'Haven Metadata';
@@ -1070,11 +1070,11 @@ function App() {
         try {
           let status;
           if (downloadType === 'vault') {
-            status = await api.getVaultDownloadTaskStatus(downloadInfo.taskId);
+            status = await api.getHavenDownloadTaskStatus(downloadInfo.taskId);
           } else if (downloadType === 'appdata') {
-            status = await api.getAppDataDownloadTaskStatus(downloadInfo.taskId);
+            status = await api.getHavenDownloadTaskStatus(downloadInfo.taskId);
           } else if (downloadType === 'metadata') {
-            status = await api.getMetadataDownloadTaskStatus(downloadInfo.taskId);
+            status = await api.getHavenDownloadTaskStatus(downloadInfo.taskId);
           } else {
             status = await api.getDownloadTaskStatus(downloadInfo.taskId);
           }
@@ -1381,13 +1381,15 @@ function App() {
       
       // Cancel the backend task
       if (downloadType === 'vault') {
-        await api.cancelVaultDownload(taskId);
+        await api.cancelHavenDownloadTask(taskId);
       } else if (downloadType === 'appdata') {
-        await api.cancelAppDataDownload(taskId);
+        await api.cancelHavenDownloadTask(taskId);
+      } else if (downloadType === 'metadata') {
+        await api.cancelHavenDownloadTask(taskId);
       } else {
         await api.cancelDownload(taskId);
       }
-      console.log('🚫 Cancelled download:', taskId);
+      console.log('🚫 Cancelled download:', taskId, 'Type:', downloadType);
       
       // Update progress bar to show cancelled state
       updateProgressBar(progressId, {
@@ -1401,9 +1403,11 @@ function App() {
       setTimeout(async () => {
         try {
           if (downloadType === 'vault') {
-            await api.cleanupVaultDownload(taskId);
+            await api.cleanupHavenDownload(taskId);
           } else if (downloadType === 'appdata') {
-            await api.cleanupAppDataDownload(taskId);
+            await api.cleanupHavenDownload(taskId);
+          } else if (downloadType === 'metadata') {
+            await api.cleanupHavenDownload(taskId);
           } else {
             await api.cleanupDownload(taskId);
           }

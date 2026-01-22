@@ -1,80 +1,27 @@
-import os
-from fastapi import Depends, APIRouter, Response
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, case, literal, union_all, cast
+from app.core.constants import ALL_COLUMNS
 from app.core.database import get_db
 from app import models
-from fastapi.responses import FileResponse
+
+from sqlalchemy import desc, case, literal, union_all, cast
+from fastapi import Depends, APIRouter, Response
+from app.core.config import settings
+from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from typing import List
-import hashlib
-from app.core.config import settings
-from sqlalchemy.types import Integer, String, Float, Boolean, DateTime, BigInteger
-from pgvector.sqlalchemy import Vector
 import numpy as np
+import hashlib
+import os
 
 backend_url = settings.HOST_URL
 dimension = settings.CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION
 
 router = APIRouter()
 
-# "Master List" of all possible columns
-# Format: ("json_key", "model_attribute_name", "SQL Type")
-# If the attribute exists on the model, we use it. If not, we use NULL.
-ALL_COLUMNS = [
-    # --- Common ---
-    ("id", "id", Integer),
-    ("filename", "filename", String),
-    ("file_size", "file_size", BigInteger),
-    ("capture_date", "capture_date", DateTime),
-    ("width", "width", Integer),
-    ("height", "height", Integer),
-
-    # --- Favorite ---
-    ("is_favorite", "is_favorite", Boolean),
-    
-    # --- Location ---
-    ("city", "city", String),
-    ("state", "state", String),
-    ("country", "country", String),
-    ("latitude", "latitude", Float),
-    ("longitude", "longitude", Float),
-
-    # --- Exif ---
-    ("megapixels", "megapixels", Float),
-    ("iso", "iso", Integer),
-    ("f_number", "f_number", Float),
-    ("exposure_time", "exposure_time", String),
-    ("focal_length", "focal_length", Float),
-    
-    # --- Camera Gear (Commonish) ---
-    ("camera_make", "camera_make", String),
-    ("camera_model", "camera_model", String),
-
-    # --- Intelligence ---
-    ("is_processed", "is_processed", Boolean),
-    ("embedding", "embedding", Vector(dimension)),
-    
-    # --- RAW / Photo Specific ---
-    ("lens_make", "lens_make", String),
-    ("lens_model", "lens_model", String),
-    ("flash_fired", "flash_fired", Boolean),
-    ("extension", "extension", String), # Specific to RAW usually
-    
-    # --- Video Specific ---
-    ("duration", "duration", Float),
-    ("fps", "fps", Float),
-    ("codec", "codec", String),
-
-    # --- System ---
-    ("created_at", "created_at", DateTime),
-]
-
 @router.get("/timeline", response_model=List[dict])
 def get_favorites_timeline(
     response: Response,
     skip: int = 0, 
-    limit: int = 100,
+    limit: int = 500,
     mediaFilter: str = 'all',
     db: Session = Depends(get_db)
 ):
@@ -107,22 +54,24 @@ def get_favorites_timeline(
     queryVideos = build_select(models.Video, "video").filter(models.Video.is_favorite == True)
     queryRawImages = build_select(models.RawImage, "raw").filter(models.RawImage.is_favorite == True)
 
-    combined_query = union_all(queryImages, queryVideos, queryRawImages).alias("media_union")
-
     if mediaFilter == "all":
-        total_count = db.query(combined_query).count()
-    elif mediaFilter == "videos":
-        total_count = db.query(combined_query).filter(combined_query.c.type == "video").count()
-    elif mediaFilter == "raw":
-        total_count = db.query(combined_query).filter(combined_query.c.type == "raw").count()
+        combined_query = union_all(queryImages, queryVideos, queryRawImages).alias("media_union")
     elif mediaFilter == "photos":
-        total_count = db.query(combined_query).filter(combined_query.c.type == "image").count()
+        combined_query = union_all(queryImages).alias("media_union")
+    elif mediaFilter == "videos":
+        combined_query = union_all(queryVideos).alias("media_union")
+    elif mediaFilter == "raw":
+        combined_query = union_all(queryRawImages).alias("media_union")
     else:
-        total_count = 0
+        combined_query = union_all(queryImages, queryVideos, queryRawImages).alias("media_union")
+    
+    base_query = db.query(combined_query)
+
+    total_count = base_query.count()
     response.headers["X-Total-Count"] = str(total_count)
 
     # Sort by Date DESC
-    final_query = db.query(combined_query).order_by(
+    final_query = base_query.order_by(
         case(
             (combined_query.c.capture_date != None, 0),
             else_=1
@@ -181,173 +130,47 @@ def get_favorites_timeline(
             item["raw_url"] = item["file_url"]
 
         output.append(item)
-    if mediaFilter == "all":
-        return [
-                {
-                    "id": item["id"],
-                    "filename": item["filename"],
-                    "is_favorite": item["is_favorite"],
-                    "type": item["type"],
-                    "extension": item["extension"],
-                    "thumbnail_url": item["thumbnail_url"],
-                    "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
-                    "image_url": item["image_url"] if item["type"] == "image" else None,
-                    "video_url": item["video_url"] if item["type"] == "video" else None,
-                    "raw_url": item["raw_url"] if item["type"] == "raw" else None,
-                    "date": item["capture_date"],
-                    "latitude": item["latitude"],
-                    "longitude": item["longitude"],
-                    "city": item["city"],
-                    "state": item["state"],
-                    "country": item["country"],
+    return [
+            {
+                "id": item["id"],
+                "filename": item["filename"],
+                "is_favorite": item["is_favorite"],
+                "type": item["type"],
+                "extension": item["extension"],
+                "thumbnail_url": item["thumbnail_url"],
+                "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
+                "image_url": item["image_url"] if item["type"] == "image" else None,
+                "video_url": item["video_url"] if item["type"] == "video" else None,
+                "raw_url": item["raw_url"] if item["type"] == "raw" else None,
+                "date": item["capture_date"],
+                "latitude": item["latitude"],
+                "longitude": item["longitude"],
+                "city": item["city"],
+                "state": item["state"],
+                "country": item["country"],
+                "width": item["width"],
+                "height": item["height"],
+                "duration": item["duration"],
+                "megapixels": item["megapixels"],
+                "metadata": {
+                    "camera_make": item["camera_make"],
+                    "camera_model": item["camera_model"],
+                    "lens_make": item["lens_make"],
+                    "lens_model": item["lens_model"],
+                    "exposure_time": item["exposure_time"],
+                    "f_number": item["f_number"],
+                    "iso": item["iso"],
+                    "focal_length": item["focal_length"],
+                    "flash_fired": item["flash_fired"],
+                    "size_bytes": item["file_size"],
+                    "fps": item["fps"],
+                    "codec": item["codec"],
                     "width": item["width"],
                     "height": item["height"],
-                    "duration": item["duration"],
-                    "megapixels": item["megapixels"],
-                    "metadata": {
-                        "camera_make": item["camera_make"],
-                        "camera_model": item["camera_model"],
-                        "lens_make": item["lens_make"],
-                        "lens_model": item["lens_model"],
-                        "exposure_time": item["exposure_time"],
-                        "f_number": item["f_number"],
-                        "iso": item["iso"],
-                        "focal_length": item["focal_length"],
-                        "flash_fired": item["flash_fired"],
-                        "size_bytes": item["file_size"],
-                        "fps": item["fps"],
-                        "codec": item["codec"],
-                        "width": item["width"],
-                        "height": item["height"],
-                    }
                 }
-                for item in output
-            ]
-    elif mediaFilter == "photos":
-        return [
-                {
-                    "id": item["id"],
-                    "filename": item["filename"],
-                    "is_favorite": item["is_favorite"],
-                    "type": item["type"],
-                    "extension": item["extension"],
-                    "thumbnail_url": item["thumbnail_url"],
-                    "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
-                    "image_url": item["image_url"] if item["type"] == "image" else None,
-                    "video_url": item["video_url"] if item["type"] == "video" else None,
-                    "raw_url": item["raw_url"] if item["type"] == "raw" else None,
-                    "date": item["capture_date"],
-                    "latitude": item["latitude"],
-                    "longitude": item["longitude"],
-                    "city": item["city"],
-                    "state": item["state"],
-                    "country": item["country"],
-                    "width": item["width"],
-                    "height": item["height"],
-                    "duration": item["duration"],
-                    "megapixels": item["megapixels"],
-                    "metadata": {
-                        "camera_make": item["camera_make"],
-                        "camera_model": item["camera_model"],
-                        "lens_make": item["lens_make"],
-                        "lens_model": item["lens_model"],
-                        "exposure_time": item["exposure_time"],
-                        "f_number": item["f_number"],
-                        "iso": item["iso"],
-                        "focal_length": item["focal_length"],
-                        "flash_fired": item["flash_fired"],
-                        "size_bytes": item["file_size"],
-                        "fps": item["fps"],
-                        "codec": item["codec"],
-                        "width": item["width"],
-                        "height": item["height"],
-                    }
-                } for item in output if item["type"] == "image"
-            ]
-    elif mediaFilter == "videos":
-        return [
-                {
-                    "id": item["id"],
-                    "filename": item["filename"],
-                    "is_favorite": item["is_favorite"],
-                    "type": item["type"],
-                    "extension": item["extension"],
-                    "thumbnail_url": item["thumbnail_url"],
-                    "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
-                    "image_url": item["image_url"] if item["type"] == "image" else None,
-                    "video_url": item["video_url"] if item["type"] == "video" else None,
-                    "raw_url": item["raw_url"] if item["type"] == "raw" else None,
-                    "date": item["capture_date"],
-                    "latitude": item["latitude"],
-                    "longitude": item["longitude"],
-                    "city": item["city"],
-                    "state": item["state"],
-                    "country": item["country"],
-                    "width": item["width"],
-                    "height": item["height"],
-                    "duration": item["duration"],
-                    "megapixels": item["megapixels"],
-                    "metadata": {
-                        "camera_make": item["camera_make"],
-                        "camera_model": item["camera_model"],
-                        "lens_make": item["lens_make"],
-                        "lens_model": item["lens_model"],
-                        "exposure_time": item["exposure_time"],
-                        "f_number": item["f_number"],
-                        "iso": item["iso"],
-                        "focal_length": item["focal_length"],
-                        "flash_fired": item["flash_fired"],
-                        "size_bytes": item["file_size"],
-                        "fps": item["fps"],
-                        "codec": item["codec"],
-                        "width": item["width"],
-                        "height": item["height"],
-                    }
-                } for item in output if item["type"] == "video"
-            ]
-    elif mediaFilter == "raw":
-        return [
-                {
-                    "id": item["id"],
-                    "filename": item["filename"],
-                    "is_favorite": item["is_favorite"],
-                    "type": item["type"],
-                    "extension": item["extension"],
-                    "thumbnail_url": item["thumbnail_url"],
-                    "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
-                    "image_url": item["image_url"] if item["type"] == "image" else None,
-                    "video_url": item["video_url"] if item["type"] == "video" else None,
-                    "raw_url": item["raw_url"] if item["type"] == "raw" else None,
-                    "date": item["capture_date"],
-                    "latitude": item["latitude"],
-                    "longitude": item["longitude"],
-                    "city": item["city"],
-                    "state": item["state"],
-                    "country": item["country"],
-                    "width": item["width"],
-                    "height": item["height"],
-                    "duration": item["duration"],
-                    "megapixels": item["megapixels"],
-                    "metadata": {
-                        "camera_make": item["camera_make"],
-                        "camera_model": item["camera_model"],
-                        "lens_make": item["lens_make"],
-                        "lens_model": item["lens_model"],
-                        "exposure_time": item["exposure_time"],
-                        "f_number": item["f_number"],
-                        "iso": item["iso"],
-                        "focal_length": item["focal_length"],
-                        "flash_fired": item["flash_fired"],
-                        "size_bytes": item["file_size"],
-                        "fps": item["fps"],
-                        "codec": item["codec"],
-                        "width": item["width"],
-                        "height": item["height"],
-                    }
-                } for item in output if item["type"] == "raw"
-            ]
-    else:
-        return []
+            }
+            for item in output
+        ]
 
 @router.post("/toggle/{fileType}/{id}", response_model=int)
 def toggle_favorite(id: int, fileType: str, db: Session = Depends(get_db)):
@@ -359,6 +182,8 @@ def toggle_favorite(id: int, fileType: str, db: Session = Depends(get_db)):
         media = db.query(models.RawImage).filter(models.RawImage.id == id).first()
     else:
         raise HTTPException(status_code=400, detail="Invalid file type")
+    if not media:
+        raise HTTPException(status_code=404, detail="Media not found")
     media.is_favorite = not media.is_favorite
     db.commit()
     return media.id

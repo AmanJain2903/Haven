@@ -2,31 +2,6 @@ import axios from 'axios';
 
 const API_URL = 'http://localhost:8000/api/v1';
 
-// Batch operations
-export const batchAddToAlbum = async (albumId, files) => {
-  const response = await fetch(`${API_URL}/albums/batch_add_to_album?albumId=${albumId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(files)
-  });
-  if (!response.ok) throw new Error('Failed to start batch add');
-  return response.json();
-};
-
-export const batchDeleteAlbum = async (albumId) => {
-  const response = await fetch(`${API_URL}/albums/batch_delete_album?albumId=${albumId}`, {
-    method: 'POST'
-  });
-  if (!response.ok) throw new Error('Failed to start batch delete');
-  return response.json();
-};
-
-export const getBatchTaskStatus = async (taskId) => {
-  const response = await fetch(`${API_URL}/albums/batch_task_status/${taskId}`);
-  if (!response.ok) throw new Error('Failed to get task status');
-  return response.json();
-};
-
 export const api = {
 
   // System API ENDPOINTS
@@ -34,33 +9,6 @@ export const api = {
   // Get project version
   getProjectVersion: async () => {
     const response = await axios.get(`${API_URL}/system/version`);
-    return response.data;
-  },
-  // Get backend status
-  getBackendStatus: async () => {
-    const response = await axios.get(`${API_URL}/health/status`);
-    return response.data;
-  },
-  // Get system status
-  getSystemStatus: async () => {
-    const response = await axios.get(`${API_URL}/system/status`);
-    return response.data;
-  },
-  // Get system config
-  getSystemConfig: async (key) => {
-    const response = await axios.get(`${API_URL}/system/config`, {
-      params: { key: key }
-    });
-    return response.data;
-  },
-  // Get system path
-  getSystemPath: async () => {
-    const response = await axios.get(`${API_URL}/system/system_path`);
-    return response.data;
-  },
-  // Get download path
-  getDownloadPath: async () => {
-    const response = await axios.get(`${API_URL}/system/download_path`);
     return response.data;
   },
   // Check if space is available
@@ -81,16 +29,6 @@ export const api = {
         photos: response.data,
         total: parseInt(response.headers['x-total-count'] || 0, 10)
     }
-  },
-
-  getImageThumbnailFile: async (id) => {
-    const response = await axios.get(`${API_URL}/images/thumbnail/${id}`);
-    return response.data;
-  },
-
-  getImageFile: async (id) => {
-    const response = await axios.get(`${API_URL}/images/file/${id}`);
-    return response.data;
   },
 
   // Fetch detailed info for a specific image
@@ -119,21 +57,6 @@ export const api = {
     }
   },
 
-  getVideoThumbnailFile: async (id) => {
-    const response = await axios.get(`${API_URL}/videos/thumbnail/${id}`);
-    return response.data;
-  },
-
-  getVideoPreviewFile: async (id) => {
-    const response = await axios.get(`${API_URL}/videos/preview/${id}`);
-    return response.data;
-  },
-
-  getVideoFile: async (id) => {
-    const response = await axios.get(`${API_URL}/videos/file/${id}`);
-    return response.data;
-  },
-
   getVideoDetails: async (id) => {
     const response = await axios.get(`${API_URL}/videos/details/${id}`);
     return response.data;
@@ -157,21 +80,6 @@ export const api = {
       rawImages: response.data,
       total: parseInt(response.headers['x-total-count'] || 0, 10)
     }
-  },
-
-  getRawThumbnailFile: async (id) => {
-    const response = await axios.get(`${API_URL}/raw_images/thumbnail/${id}`);
-    return response.data;
-  },
-
-  getRawPreviewFile: async (id) => {
-    const response = await axios.get(`${API_URL}/raw_images/preview/${id}`);
-    return response.data;
-  },
-
-  getRawFile: async (id) => {
-    const response = await axios.get(`${API_URL}/raw_images/file/${id}`);
-    return response.data;
   },
 
   getRawDetails: async (id) => {
@@ -222,7 +130,7 @@ export const api = {
   // ------------------------------------------------------------
   // Search photos
   searchPhotos: async (query, skip=0, limit=500) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/images`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/images`, null, {
       params: { query: query, skip: skip, limit: limit }
     });
     return {
@@ -233,7 +141,7 @@ export const api = {
 
   // Search videos
   searchVideos: async (query, skip=0, limit=500) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/videos`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/videos`, null, {
       params: { query: query, skip: skip, limit: limit }
     });
     return {
@@ -244,7 +152,7 @@ export const api = {
 
   // Search raw images
   searchRawImages: async (query, skip=0, limit=500) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/raw_images`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/raw_images`, null, {
       params: { query: query, skip: skip, limit: limit }
     });
     return {
@@ -255,7 +163,7 @@ export const api = {
 
   // Search all media
   searchAllMedia: async (query, skip=0, limit=500) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/all_media`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/all_media`, null, {
       params: { query: query, skip: skip, limit: limit }
     });
     return {
@@ -267,7 +175,7 @@ export const api = {
   // Search favorites
   // Note: backend may ignore mediaFilter if not implemented server-side; frontend can still filter results.
   searchFavorites: async (query, skip=0, limit=500, mediaFilter="all") => {
-    const response = await axios.post(`${API_URL}/intelligence/search/favorites`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/favorites`, null, {
       params: { query: query, skip: skip, limit: limit, mediaFilter: mediaFilter }
     });
     return {
@@ -278,7 +186,7 @@ export const api = {
 
   // Search map points for images
   searchMapPointsImages: async (query) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/map/images`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/map/images`, null, {
       params: { query: query }
     });
     return response.data;
@@ -286,7 +194,7 @@ export const api = {
 
   // Search map points for videos
   searchMapPointsVideos: async (query) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/map/videos`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/map/videos`, null, {
       params: { query: query }
     });
     return response.data;
@@ -294,7 +202,7 @@ export const api = {
 
   // Search map points for raw images
   searchMapPointsRawImages: async (query) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/map/raw_images`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/map/raw_images`, null, {
       params: { query: query }
     });
     return response.data;
@@ -302,7 +210,7 @@ export const api = {
 
   // Search map points for all media
   searchMapPointsAllMedia: async (query) => {
-    const response = await axios.post(`${API_URL}/intelligence/search/map/all_media`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/map/all_media`, null, {
       params: { query: query }
     });
     return response.data;
@@ -310,7 +218,7 @@ export const api = {
 
   // Search albums
   searchAlbums: async (albumId, query, skip=0, limit=500, mediaFilter="all") => {
-    const response = await axios.post(`${API_URL}/intelligence/search/albums/${albumId}`, null, {
+    const response = await axios.get(`${API_URL}/intelligence/search/albums/${albumId}`, null, {
       params: { query: query, skip: skip, limit: limit, mediaFilter: mediaFilter }
     });
     return {
@@ -326,35 +234,35 @@ export const api = {
   // Search specifically for map points (lightweight, high limit)
   // Get all map points for images (lightweight)
   getAllMapPointsImages: async () => {
-    const response = await axios.get(`${API_URL}/map/images`);
+    const response = await axios.get(`${API_URL}/maps/images`);
     return response.data;
   },
 
   // Get all map points for videos (lightweight)
   getAllMapPointsVideos: async () => {
-    const response = await axios.get(`${API_URL}/map/videos`);
+    const response = await axios.get(`${API_URL}/maps/videos`);
     return response.data;
   },
 
   // Get all map points for raw images (lightweight)
   getAllMapPointsRawImages: async () => {
-    const response = await axios.get(`${API_URL}/map/raw_images`);
+    const response = await axios.get(`${API_URL}/maps/raw_images`);
     return response.data;
   },
 
   // Get all map points for all media (lightweight)
   getAllMapPointsAllMedia: async () => {
-    const response = await axios.get(`${API_URL}/map/all_media`);
+    const response = await axios.get(`${API_URL}/maps/all_media`);
     return response.data;
   },
 
   getFileLocation: async (fileType, id) => {
-    const response = await axios.get(`${API_URL}/map/location/${fileType}/${id}`);
+    const response = await axios.get(`${API_URL}/maps/location/${fileType}/${id}`);
     return response.data;
   },
 
   updateFileLocation: async (fileType, id, city, state, country) => {
-    const response = await axios.post(`${API_URL}/map/location/${fileType}/${id}`, null, {
+    const response = await axios.post(`${API_URL}/maps/location/${fileType}/${id}`, null, {
       params: { city: city, state: state, country: country }
     });
     return response.data;
@@ -385,11 +293,6 @@ export const api = {
     const response = await axios.post(`${API_URL}/albums/update/${albumId}`, null, {
       params: { albumName: albumName, albumDescription: albumDescription, albumLocation: albumLocation, albumCity: albumCity, albumState: albumState, albumCountry: albumCountry }
     });
-    return response.data;
-  },
-
-  deleteAlbum: async (albumId) => {
-    const response = await axios.delete(`${API_URL}/albums/delete/${albumId}`);
     return response.data;
   },
 
@@ -428,6 +331,31 @@ export const api = {
     return response.data;
   },
 
+  // Batch operations
+  batchAddToAlbum: async (albumId, files) => {
+  const response = await fetch(`${API_URL}/albums/batch_add_to_album?albumId=${albumId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(files)
+  });
+  if (!response.ok) throw new Error('Failed to start batch add');
+  return response.json();
+},
+
+  batchDeleteAlbum: async (albumId) => {
+  const response = await fetch(`${API_URL}/albums/batch_delete_album?albumId=${albumId}`, {
+    method: 'POST'
+  });
+  if (!response.ok) throw new Error('Failed to start batch delete');
+  return response.json();
+},
+
+  getBatchTaskStatus: async (taskId) => {
+  const response = await fetch(`${API_URL}/albums/batch_task_status/${taskId}`);
+  if (!response.ok) throw new Error('Failed to get task status');
+  return response.json();
+},
+
   // Album Download API ENDPOINTS
   // ------------------------------------------------------------
   startAlbumDownload: async (albumId) => {
@@ -440,8 +368,6 @@ export const api = {
     return response.data;
   },
 
-  getDownloadFileUrl: (taskId) => `${API_URL}/albums/download_file/${taskId}`,
-
   cleanupDownload: async (taskId) => {
     const response = await axios.delete(`${API_URL}/albums/cleanup_download/${taskId}`);
     return response.data;
@@ -452,62 +378,32 @@ export const api = {
     return response.data;
   },
 
-  // Haven Vault download (full vault)
-  startVaultDownload: async () => {
-    const response = await axios.post(`${API_URL}/dashboard/download_haven_vault`);
+  // Start Haven Download Task
+  startHavenDownloadTask: async (downloadType="default") => {
+    const response = await axios.post(`${API_URL}/dashboard/download`, null,
+      { params: { downloadType: downloadType } 
+    });
     return response.data;
   },
-  getVaultDownloadTaskStatus: async (taskId) => {
+
+  // Get the status of a download task
+  getHavenDownloadTaskStatus: async (taskId) => {
     const response = await axios.get(`${API_URL}/dashboard/download_task_status/${taskId}`);
     return response.data;
   },
-  getVaultDownloadFileUrl: (taskId) => `${API_URL}/dashboard/download_file/${taskId}`,
-  cleanupVaultDownload: async (taskId) => {
+
+  // Cleanup a download task
+  cleanupHavenDownload: async (taskId) => {
     const response = await axios.delete(`${API_URL}/dashboard/cleanup_download/${taskId}`);
     return response.data;
   },
-  cancelVaultDownload: async (taskId) => {
+
+  // Cancel a download task
+  cancelHavenDownloadTask: async (taskId) => {
     const response = await axios.post(`${API_URL}/dashboard/cancel_download/${taskId}`);
     return response.data;
   },
 
-  // Haven App Data download
-  startAppDataDownload: async () => {
-    const response = await axios.post(`${API_URL}/dashboard/download_app_data`);
-    return response.data;
-  },
-  getAppDataDownloadTaskStatus: async (taskId) => {
-    const response = await axios.get(`${API_URL}/dashboard/app_data_download_task_status/${taskId}`);
-    return response.data;
-  },
-  getAppDataDownloadFileUrl: (taskId) => `${API_URL}/dashboard/app_data_download_file/${taskId}`,
-  cleanupAppDataDownload: async (taskId) => {
-    const response = await axios.delete(`${API_URL}/dashboard/cleanup_app_data_download/${taskId}`);
-    return response.data;
-  },
-  cancelAppDataDownload: async (taskId) => {
-    const response = await axios.post(`${API_URL}/dashboard/cancel_app_data_download/${taskId}`);
-    return response.data;
-  },
-
-  // Haven Metadata download
-  startMetadataDownload: async () => {
-    const response = await axios.post(`${API_URL}/dashboard/download_metadata`);
-    return response.data;
-  },
-  getMetadataDownloadTaskStatus: async (taskId) => {
-    const response = await axios.get(`${API_URL}/dashboard/metadata_download_task_status/${taskId}`);
-    return response.data;
-  },
-  getMetadataDownloadFileUrl: (taskId) => `${API_URL}/dashboard/metadata_download_file/${taskId}`,
-  cleanupMetadataDownload: async (taskId) => {
-    const response = await axios.delete(`${API_URL}/dashboard/cleanup_metadata_download/${taskId}`);
-    return response.data;
-  },
-  cancelMetadataDownload: async (taskId) => {
-    const response = await axios.post(`${API_URL}/dashboard/cancel_metadata_download/${taskId}`);
-    return response.data;
-  },
   // ------------------------------------------------------------
 
   // Dashboard API ENDPOINTS

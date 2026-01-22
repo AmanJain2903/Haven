@@ -1,79 +1,23 @@
-import os
-import json
-import subprocess
-import re
-import numpy as np
-from datetime import datetime
-from sqlalchemy.orm import Session
-from app.core.database import SessionLocal
-from app.models import Video
-from app.core.config import settings
+from app.core.utils import ensure_dirs, get_location_parts, parse_iso6709, get_duration_cv2
 from app.ml.clip_client import generate_embedding
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-from geopy.geocoders import Nominatim
-import hashlib
+from app.core.database import SessionLocal
+from app.core.constants import VIDEO_EXTS
+from app.core.config import settings
+from app.models import Video
+
 from sqlalchemy.exc import IntegrityError
+from datetime import datetime
+import numpy as np
+import subprocess
+import tempfile
+import hashlib
+import shutil
+import json
+import os
 
 # Directory setup
 THUMBNAIL_DIR = settings.VIDEO_THUMBNAIL_DIR
 PREVIEW_DIR = settings.VIDEO_PREVIEW_DIR
-
-# Define extensions for routing
-VIDEO_EXTS = {'.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm', '.mts', '.m2ts', '.3gp', '.3g2', '.wmv', '.flv', '.ogv'}
-
-def ensure_dirs():
-    os.makedirs(THUMBNAIL_DIR, exist_ok=True)
-    os.makedirs(PREVIEW_DIR, exist_ok=True)
-
-def parse_iso6709(geo_string):
-    """
-    Parses ISO6709 string from video metadata (e.g., "+37.7749-122.4194/")
-    Returns (lat, lon)
-    """
-    try:
-        # Regex to find coordinate pairs
-        match = re.match(r'([+-][0-9.]+)([+-][0-9.]+)', geo_string)
-        if match:
-            return float(match.group(1)), float(match.group(2))
-    except:
-        pass
-    return None, None
-
-def get_location_parts(latitude: float, longitude: float) -> dict:
-    """
-    Reverse geocode coordinates to get a human-readable location label.
-    """
-    try:
-        geolocator = Nominatim(user_agent="haven_photo_manager")
-        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10, language='en')
-        
-        if not location or not location.raw.get('address'):
-            return None
-        
-        address = location.raw['address']
-        parts = {
-            'city': None,
-            'state': None,
-            'country': None
-        }
-        
-        city = address.get('city') or address.get('town') or address.get('village') or address.get('municipality')
-        if city: parts['city'] = city
-        
-        state = address.get('state') or address.get('region')
-        if state: parts['state'] = state
-        
-        country = address.get('country')
-        if country: parts['country'] = country
-        
-        return parts
-        
-    except (GeocoderTimedOut, GeocoderServiceError) as e:
-        print(f"Geocoding service error: {e}")
-        return None
-    except Exception as e:
-        print(f"Error reverse geocoding ({latitude}, {longitude}): {e}")
-        return None
 
 def get_video_metadata(file_path):
     """
@@ -95,7 +39,7 @@ def get_video_metadata(file_path):
         video_stream = next((s for s in data.get("streams", []) if s["codec_type"] == "video"), None)
         
         if not video_stream:
-            return None
+            return {}
 
         # Helper to safely convert types
         def safe_float(val):
@@ -150,7 +94,7 @@ def get_video_metadata(file_path):
 
     except Exception as e:
         print(f"⚠️ Metadata error for {file_path}: {e}")
-        return None
+        return {}
 
 def generate_assets(file_path, filename, duration):
     """
@@ -158,7 +102,7 @@ def generate_assets(file_path, filename, duration):
     1. Static Thumbnail (JPG)
     2. Hover Preview (Small MP4, 3 seconds)
     """
-    ensure_dirs()
+    ensure_dirs([THUMBNAIL_DIR, PREVIEW_DIR])
     path_hash = hashlib.md5(file_path.encode('utf-8')).hexdigest()
     
     thumb_name = f"thumb_{path_hash}.jpg"
@@ -186,26 +130,28 @@ def generate_assets(file_path, filename, duration):
 
     return thumb_name, preview_name
 
-def extract_smart_frames(file_path, duration, count=4):
+def extract_smart_frames(file_path, duration, count=4, tempDir=None):
     """
     Extracts 4 temp frames spread across the video for AI analysis.
     Returns list of paths to temp images.
     """
     frames = []
-    import tempfile
+
+    if not duration or duration <= 0:
+        return []
     
     # Calculate timestamps: 20%, 40%, 60%, 80%
     timestamps = [duration * (i + 1) / (count + 1) for i in range(count)]
     
     for i, ts in enumerate(timestamps):
-        tmp_name = os.path.join(tempfile.gettempdir(), f"haven_smart_frame_{i}.jpg")
+        tmp_name = os.path.join(tempDir, f"haven_smart_frame_{i}.jpg")
         subprocess.run([
             "ffmpeg", "-y", "-ss", str(ts), "-i", file_path,
             "-vframes", "1", "-vf", "scale=224:-1", "-q:v", "2", tmp_name
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if os.path.exists(tmp_name):
             frames.append(tmp_name)
-            
+
     return frames
 
 def process_video_file(full_path: str, filename: str):
@@ -228,35 +174,50 @@ def process_video_file(full_path: str, filename: str):
         # 1. Extract Metadata
         meta = get_video_metadata(full_path)
         if not meta:
-            print(f"❌ Failed to parse video: {filename}")
+            print(f"⚠️ Warning: Failed to parse video: {filename}")
+            meta = {}
+        
+        if not meta.get('duration'):
+            meta['duration'] = get_duration_cv2(full_path)
+        
+        if not meta.get('duration') or meta.get('duration') <= 0:
+            print(f"❌ Error: Failed to get duration for video: {filename}")
             return
 
         # 2. Generate Visual Assets (Thumb + Preview)
         thumb_name, preview_name = generate_assets(full_path, filename, meta['duration'])
 
+        if not thumb_name or not preview_name:
+            print(f"❌ Could not process video data for {filename}")
+            return
+
         # 3. AI Smart Embedding (Multi-Frame Average)
         print(f"🧠 Video Analysis: {filename}...")
-        temp_frames = extract_smart_frames(full_path, meta['duration'])
-        vectors = []
-        
-        for frame in temp_frames:
-            vec = generate_embedding(frame)
-            if vec:
-                vectors.append(vec)
-            try:
-                os.remove(frame) # Clean up
-            except: pass
-            
-        # Average the vectors if we got any
         final_embedding = None
-        if vectors:
-            # Calculate mean across the 0-th axis (average of 4 vectors)
-            final_embedding = np.mean(vectors, axis=0).tolist()
+        is_processed = False
+
+        # Use TemporaryDirectory context manager.
+        # This creates a unique folder like /tmp/tmp8374hxs/ that no other worker touches.
+        # It auto-deletes the folder when the 'with' block ends.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_frames = extract_smart_frames(full_path, meta['duration'], tempDir=temp_dir)
+            vectors = []
+            
+            for frame in temp_frames:
+                vec = generate_embedding(frame)
+                if vec:
+                    vectors.append(vec)
+            
+            if vectors:
+                final_embedding = np.mean(vectors, axis=0).tolist()
+                is_processed = True
+            else:
+                print(f"⚠️ Warning: No embeddings generated for {filename}")
         
         city, state, country = None, None, None
         
         # Get Location Parts
-        if meta['lat'] and meta['lon']:
+        if meta.get('lat') and meta.get('lon'):
             loc = get_location_parts(meta['lat'], meta['lon'])
             if loc:
                 city = loc.get('city')
@@ -266,22 +227,22 @@ def process_video_file(full_path: str, filename: str):
         # 4. Save to DB
         db_video = Video(
             filename=filename,
-            file_size=meta['size'],
-            capture_date=meta['date'],
-            latitude=meta['lat'],
-            longitude=meta['lon'],
+            file_size=meta.get('size'),
+            capture_date=meta.get('date'),
+            latitude=meta.get('lat'),
+            longitude=meta.get('lon'),
             city=city,
             state=state,
             country=country,
-            camera_make=meta['make'],
-            camera_model=meta['model'],
-            duration=meta['duration'],
-            width=meta['width'],
-            height=meta['height'],
-            fps=meta['fps'],
-            codec=meta['codec'],
+            camera_make=meta.get('make'),
+            camera_model=meta.get('model'),
+            duration=meta.get('duration'),
+            width=meta.get('width'),
+            height=meta.get('height'),
+            fps=meta.get('fps'),
+            codec=meta.get('codec'),
             embedding=final_embedding,
-            is_processed=True,
+            is_processed=is_processed,
             # We don't store full paths for thumbnails, just filename
             # The UI knows where to look based on settings
         )
