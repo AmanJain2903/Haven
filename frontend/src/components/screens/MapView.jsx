@@ -5,12 +5,12 @@ import L from 'leaflet';
 import { divIcon } from 'leaflet';
 import { motion } from 'framer-motion';
 import { MapPin, Image, Video, Camera, Files } from 'lucide-react';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import ImageViewer from './ImageViewer';
-import VideoViewer from './VideoViewer';
-import RawImageViewer from './RawImageViewer';
-import  { api }  from '../api';
+import ImageViewer from '../viewers/ImageViewer';
+import VideoViewer from '../viewers/VideoViewer';
+import RawImageViewer from '../viewers/RawImageViewer';
+import  { api }  from '../../api';
 
 // Fix for default Leaflet markers not showing in React
 import icon from 'leaflet/dist/images/marker-icon.png';

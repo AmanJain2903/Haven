@@ -1,48 +1,60 @@
-import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock, MoreVertical, Play, Pause, Edit, RotateCcw, RotateCw, FolderPlus, FileType, Focus } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Play, Pause, Volume2, VolumeX, Maximize, Camera, Timer, FileCode, HardDrive, Clock, MoreVertical, Edit, FolderPlus } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '../contexts/ThemeContext';
-import { api } from '../api';
-import { formatFileSize } from '../utils/fileUtils';
-import FavoriteButton from './FavoriteButton';
-import ShareButton from './ShareButton';
-import DownloadButton from './DownloadButton';
-import DeleteButton from './DeleteButton';
-import EditLocationModal from './EditLocationModal';
+import { useTheme } from '../../contexts/ThemeContext';
+import { api } from '../../api';
+import { formatFileSize } from '../../utils/fileUtils';
+import FavoriteButton from '../buttons/FavoriteButton';
+import ShareButton from '../buttons/ShareButton';
+import DownloadButton from '../buttons/DownloadButton';
+import DeleteButton from '../buttons/DeleteButton';
+import EditLocationModal from '../modals/EditLocationModal';
 
-const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, totalRawImages, onFavoriteToggle, onLocationUpdate, isAddToAlbumModalOpen, setIsAddToAlbumModalOpen, onDelete, isSlideshowActive = false, isSlideshowPaused = false, pauseSlideshow, endSlideshow }) => {
+const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos, onFavoriteToggle, onLocationUpdate, isAddToAlbumModalOpen, setIsAddToAlbumModalOpen, onDelete, isSlideshowActive = false, isSlideshowPaused = false, pauseSlideshow, endSlideshow }) => {
   const { isDark } = useTheme();
   
-  const [activeRawImage, setActiveRawImage] = useState(rawImage);
-
+  const [activeVideo, setActiveVideo] = useState(video);
   const [direction, setDirection] = useState(0);
   const [prevIndex, setPrevIndex] = useState(currentIndex);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [scale, setScale] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [shouldLoadMedia, setShouldLoadMedia] = useState(false);
-  const [rotation, setRotation] = useState(0);
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [isEditLocationModalOpen, setIsEditLocationModalOpen] = useState(false);
   
-  // Refs for cancelling in-flight image loads
-  const thumbnailRef = useRef(null);
-  const previewImageRef = useRef(null);
+  // Video-specific states
+  const videoRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+
+  // Dragging state
+  const [isDragging, setIsDragging] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const lastSeekTime = useRef(0);
+  
+  // Hover states for auto-hiding controls
+  const [isHoveringVideo, setIsHoveringVideo] = useState(false);
+  const [isHoveringControls, setIsHoveringControls] = useState(false);
+  
+  // Debounced media loading
+  const [shouldLoadMedia, setShouldLoadMedia] = useState(false);
+  
+  // Determine if bottom controls should be visible
+  // Show if: paused OR (playing AND hovering video/controls)
+  // Hide if: metadata overlay or more options dropdown is open
+  const shouldShowControls = (!isPlaying || isHoveringVideo || isHoveringControls) && !showMetadata && !showMoreOptions;
   
   // --- DEBOUNCE MEDIA LOADING TO PREVENT QUEUE BUILDUP ---
   useEffect(() => {
-    if (!rawImage) return;
+    if (!video) return;
 
-    // Cancel any in-flight image loads by clearing the src
-    if (thumbnailRef.current) {
-      thumbnailRef.current.src = '';
-    }
-    if (previewImageRef.current) {
-      previewImageRef.current.src = '';
+    // Cancel any in-flight video loads
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.src = '';
+      videoRef.current.load(); // Reset the video element
     }
 
     // Reset media loading state immediately on navigation
@@ -55,44 +67,39 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
 
     return () => {
       clearTimeout(mediaLoadTimer);
-      // Final cleanup: cancel any pending image loads
-      if (thumbnailRef.current) {
-        thumbnailRef.current.src = '';
-      }
-      if (previewImageRef.current) {
-        previewImageRef.current.src = '';
+      // Final cleanup: cancel any pending video loads
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.src = '';
       }
     };
-  }, [rawImage]);
-  
-  // --- FETCH DETAILS LOGIC ---
-  useEffect(() => {
-    if (!rawImage) return;
+  }, [video]);
 
-    setActiveRawImage(rawImage);
+  // Fetch details logic
+  useEffect(() => {
+    if (!video) return;
+    setActiveVideo(video);
 
     let isMounted = true;
 
     const fetchDetailedData = async () => {
       try {
-        const details = await api.getRawDetails(rawImage.id);
-        
-        if (isMounted && details && details.id === rawImage.id) {
-          setActiveRawImage(details);
+        const details = await api.getVideoDetails(video.id);
+        if (isMounted && details && String(details.id) === String(video.id)) {
+          setActiveVideo(details);
         }
       } catch (error) {
-        console.error("Failed to fetch detailed RAW image data, using fallback.", error);
+        console.error("Failed to fetch detailed video data, using fallback.", error);
       }
     };
 
     fetchDetailedData();
-
     return () => { isMounted = false; };
-  }, [rawImage]);
+  }, [video]);
 
-  if (!activeRawImage) return null;
+  if (!activeVideo) return null;
 
-  const hasNext = currentIndex < totalRawImages - 1;
+  const hasNext = currentIndex < totalVideos - 1;
   const hasPrev = currentIndex > 0;
 
   // Update direction based on index change
@@ -100,97 +107,117 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
     if (currentIndex !== prevIndex) {
       setDirection(currentIndex > prevIndex ? 1 : -1);
       setPrevIndex(currentIndex);
-      setImageLoaded(false);
-      setScale(1);
-      setPosition({ x: 0, y: 0 });
-      setRotation(0);
+      setIsPlaying(false); // Pause when changing videos
+      setCurrentTime(0);
+      lastSeekTime.current = 0;
     }
   }, [currentIndex, prevIndex]);
 
   const handleNext = () => {
     if (hasNext) {
+      setDuration(0);
       onNext();
     }
   };
 
   const handlePrev = () => {
     if (hasPrev) {
+      setDuration(0);
       onPrev();
     }
   };
 
-  const handleRotateLeft = () => {
-    setRotation(prev => prev - 90);
-  };
-
-  const handleRotateRight = () => {
-    setRotation(prev => prev + 90);
-  };
-
-  // Normalize rotation to 0-359 range to check if image is in original orientation
-  const getNormalizedRotation = () => {
-    return ((rotation % 360) + 360) % 360;
-  };
-
-  // Zoom functions
-  const handleZoomIn = () => {
-    setScale(prev => Math.min(prev + 0.5, 5));
-  };
-
-  const handleZoomOut = () => {
-    const newScale = Math.max(scale - 0.5, 1);
-    setScale(newScale);
-    if (newScale === 1) {
-      setPosition({ x: 0, y: 0 });
-    }
-  };
-
-  const handleResetZoom = () => {
-    setScale(1);
-    setPosition({ x: 0, y: 0 });
-    // Only reset rotation if image is not already in original orientation
-    if (getNormalizedRotation() !== 0) {
-      setRotation(0);
-    }
-  };
-
-  // Mouse wheel zoom
-  const handleWheel = (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newScale = Math.max(1, Math.min(5, scale + delta));
-      setScale(newScale);
-      if (newScale === 1) {
-        setPosition({ x: 0, y: 0 });
+  // Video controls
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
       }
+      setIsPlaying(!isPlaying);
     }
   };
 
-  // Dragging for panning when zoomed
-  const handleMouseDown = (e) => {
-    if (scale > 1) {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
     }
   };
 
-  const handleMouseMove = (e) => {
-    if (isDragging && scale > 1) {
-      setPosition({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y
-      });
+  const handleVolumeChange = (e) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (videoRef.current) {
+      videoRef.current.volume = newVolume;
     }
   };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
+  const handleTimeUpdate = () => {
+    // 1. If dragging, we strictly rely on the slider input, ignore video.
+    if (isDragging) return;
+
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
   };
 
-  // Double click to reset zoom
-  const handleDoubleClick = () => {
-    handleResetZoom();
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
+
+  // Called repeatedly while dragging
+  const handleSeekChange = (e) => {
+    const newTime = parseFloat(e.target.value);
+    
+    // 1. Update the UI instantly so it feels responsive
+    setCurrentTime(newTime);
+    
+    // 2. Force the "ignore" buffer to stay active
+    lastSeekTime.current = Date.now(); 
+    
+    // 3. Scrub the video engine (optional: wrap in throttle if performance is bad)
+    if (videoRef.current) {
+        // Check if finite to prevent crashes
+        if (Number.isFinite(newTime)) {
+            videoRef.current.currentTime = newTime;
+        }
+    }
+};
+
+const handleSeekStart = () => {
+  setIsDragging(true);
+  // Pause video while scrubbing for smoother experience (optional but recommended)
+  // if (videoRef.current && !videoRef.current.paused) videoRef.current.pause(); 
+};
+
+const handleSeekEnd = () => {
+  setIsDragging(false);
+  // Refresh the buffer timestamp one last time
+  lastSeekTime.current = Date.now();
+  
+  // If you paused on start, you could resume here:
+  // if (isPlaying && videoRef.current) videoRef.current.play();
+};
+
+  // 4. Video Engine Event: "I am trying to find that frame"
+  const handleVideoSeeking = () => {
+    setIsSeeking(true);
+  };
+
+  // 5. Video Engine Event: "I found the frame"
+  const handleVideoSeeked = () => {
+    setIsSeeking(false);
+  };
+
+  const formatTime = (seconds) => {
+    if (isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Handle Keyboard Navigation
@@ -199,14 +226,18 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
       if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowRight') handleNext();
       if (e.key === 'ArrowLeft') handlePrev();
+      if (e.key === ' ') {
+        e.preventDefault();
+        togglePlay();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
-    
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, currentIndex, hasNext, hasPrev]);
+  }, [onClose, currentIndex, hasNext, hasPrev, isPlaying]);
 
-  // Prevent scrolling the background page while viewer is open
+  // Prevent scrolling the background page
   useEffect(() => {
+    // Prevent scrolling on both body and html
     const originalBodyOverflow = document.body.style.overflow;
     const originalHtmlOverflow = document.documentElement.style.overflow;
     
@@ -214,6 +245,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
     document.documentElement.style.overflow = 'hidden';
     
     return () => {
+      // Restore overflow
       document.body.style.overflow = originalBodyOverflow;
       document.documentElement.style.overflow = originalHtmlOverflow;
     };
@@ -229,13 +261,34 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
     }
   }, [showComingSoon]);
 
-  // Slideshow auto-advance for raw images
+  // Slideshow: Auto-play video when active
   useEffect(() => {
-    if (!isSlideshowActive || isSlideshowPaused || !imageLoaded) return;
+    if (isSlideshowActive && !isSlideshowPaused && videoRef.current && shouldLoadMedia) {
+      videoRef.current.play().catch(err => console.log("Auto-play failed:", err));
+      setIsPlaying(true);
+    }
+  }, [isSlideshowActive, isSlideshowPaused, shouldLoadMedia]);
 
-    const timer = setTimeout(() => {
-      if (currentIndex < totalRawImages - 1) {
-        // Move to next image
+  // Slideshow: Handle pause state
+  useEffect(() => {
+    if (isSlideshowActive && videoRef.current) {
+      if (isSlideshowPaused && isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else if (!isSlideshowPaused && !isPlaying) {
+        videoRef.current.play().catch(err => console.log("Resume play failed:", err));
+        setIsPlaying(true);
+      }
+    }
+  }, [isSlideshowPaused, isSlideshowActive]);
+
+  // Slideshow: Handle video end - advance to next or end slideshow
+  const handleVideoEnded = () => {
+    setIsPlaying(false);
+    
+    if (isSlideshowActive && !isSlideshowPaused) {
+      if (currentIndex < totalVideos - 1) {
+        // Move to next media
         handleNext();
       } else {
         // End of slideshow
@@ -243,10 +296,8 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
           endSlideshow();
         }
       }
-    }, 4000); // 4 seconds per image
-
-    return () => clearTimeout(timer);
-  }, [isSlideshowActive, isSlideshowPaused, imageLoaded, currentIndex, totalRawImages]);
+    }
+  };
 
   return (
     <motion.div 
@@ -262,7 +313,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
       {/* Content Container */}
       <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-8">
           
-          {/* --- Close Button --- */}
+          {/* Close Button */}
           <button 
             onClick={onClose}
             className="absolute top-6 right-6 p-3 glass-panel rounded-full 
@@ -276,7 +327,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
             <X className="w-6 h-6" />
           </button>
 
-          {/* --- RAW Counter --- */}
+          {/* Video Counter */}
           <div className="absolute top-6 left-1/2 -translate-x-1/2 
                          glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
                          rounded-full px-6 py-2 
@@ -285,10 +336,10 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                          shadow-lg backdrop-blur-xl z-50">
             <span className="text-purple-600 dark:text-cyan-400">{currentIndex + 1}</span>
             <span className="mx-1.5 text-slate-400 dark:text-white/40">/</span>
-            <span>{totalRawImages}</span>
+            <span>{totalVideos}</span>
           </div>
 
-          {/* --- Navigation Arrows --- */}
+          {/* Navigation Arrows */}
           <button 
             onClick={handlePrev}
             disabled={!hasPrev}
@@ -319,70 +370,153 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
             <ChevronRight className="w-8 h-8" />
           </button>
 
-          {/* --- Main Image (Preview) --- */}
-          <div 
-            className="flex h-full w-full max-w-7xl items-center justify-center p-4 md:p-12 overflow-hidden"
-            onWheel={handleWheel}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onDoubleClick={handleDoubleClick}
-            style={{ cursor: scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
-          >
-            <motion.div 
-              className="relative glass-panel rounded-3xl p-4 border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl overflow-hidden"
-              animate={{ rotate: rotation }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            >
+          {/* Main Video */}
+          <div className="flex h-full w-full max-w-7xl items-center justify-center p-4 md:p-12 overflow-hidden">
+            <div className="relative glass-panel rounded-3xl p-4 border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl overflow-hidden">
               
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div 
-                  key={activeRawImage.id} 
+                  key={String(activeVideo.id)}
                   className="relative flex items-center justify-center"
-                  animate={{ 
-                    scale: scale,
-                    x: position.x,
-                    y: position.y
-                  }}
-                  willChange="transform"
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  onMouseEnter={() => setIsHoveringVideo(true)}
+                  onMouseLeave={() => setIsHoveringVideo(false)}
                 >
-                  {/* Thumbnail - shown immediately */}
-                  {!imageLoaded && (
-                    <motion.img 
-                      ref={thumbnailRef}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      style={{willChange: 'opacity'}}
-                      transition={{ duration: 0.2 }}
-                      src={api.getRawThumbnailUrl(activeRawImage.id)}
-                      alt={activeRawImage.filename}
-                      className="max-h-[70vh] max-w-full object-contain rounded-2xl shadow-2xl blur-sm"
-                    />
-                  )}
-                  
-                  {/* Preview image (JPEG converted) */}
-                  {shouldLoadMedia && (
-                  <motion.img 
-                      ref={previewImageRef}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: imageLoaded ? 1 : 0 }}
-                    transition={{ duration: 0.3 }}
-                    src={api.getRawPreviewUrl(activeRawImage.id)}
-                    alt={activeRawImage.filename}
-                    onLoad={() => setImageLoaded(true)}
-                    className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
-                    style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
-                    draggable={false}
+                  <video
+                    ref={videoRef}
+                    src={shouldLoadMedia ? api.getVideoUrl(activeVideo.id) : undefined}
+                    className="max-h-[80vh] max-w-full rounded-2xl shadow-2xl"
+                    onTimeUpdate={handleTimeUpdate}
+                    onLoadedMetadata={handleLoadedMetadata}
+                    onEnded={handleVideoEnded}
+                    onSeeking={handleVideoSeeking}
+                    onSeeked={handleVideoSeeked}
+                    poster={api.getVideoThumbnailUrl(activeVideo.id)}
                   />
-                  )}
+                   
+                  {/* Play/Pause Overlay (centered) - Show when paused OR hovering while playing */}
+                  <AnimatePresence>
+                    {shouldShowControls && (
+                      <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        style={{ willChange: "opacity" }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute inset-0 flex items-center justify-center cursor-pointer"
+                        onClick={togglePlay}
+                      >
+                        <motion.div
+                          initial={{ scale: 0.8 }}
+                          animate={{ scale: 1 }}
+                          className="w-20 h-20 rounded-full bg-black/60 backdrop-blur-sm 
+                                   flex items-center justify-center border-2 border-white/30
+                                   shadow-2xl hover:scale-110 transition-all duration-200"
+                        >
+                          {isPlaying ? (
+                            <Pause className="w-10 h-10 text-white" fill="white" />
+                          ) : (
+                            <Play className="w-10 h-10 text-white ml-1" fill="white" />
+                          )}
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               </AnimatePresence>
-            </motion.div>
+
+              {/* Video Controls (inside video container, at bottom) */}
+              <AnimatePresence>
+                {shouldShowControls && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{ willChange: "opacity, transform" }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute bottom-5 left-0 right-0 p-4"
+                    onMouseEnter={() => setIsHoveringControls(true)}
+                    onMouseLeave={() => setIsHoveringControls(false)}
+                  >
+                    <div className="glass-panel rounded-2xl p-4 border border-purple-400/20 dark:border-cyan-400/20">
+                  {/* Progress Bar */}
+                  <div className="mb-3">
+                    <input
+                      type="range"
+                      onMouseDown={handleSeekStart}
+                      onMouseUp={handleSeekEnd}
+                      onTouchStart={handleSeekStart}
+                      onTouchEnd={handleSeekEnd}
+                      min="0"
+                      max={duration || 0}
+                      value={currentTime}
+                      onChange={handleSeekChange}
+                      className="w-full h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-purple-600 dark:accent-cyan-400"
+                    />
+                    <div className="flex justify-between text-xs text-slate-600 dark:text-white/60 mt-1">
+                      <span>{formatTime(currentTime)}</span>
+                      <span>{formatTime(duration)}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Control Buttons */}
+                  <div className="flex items-center gap-4">
+                    {/* Play/Pause */}
+                    <button
+                      onClick={togglePlay}
+                      className="p-2 rounded-full bg-purple-500/20 dark:bg-cyan-500/20 
+                               hover:bg-purple-500/30 dark:hover:bg-cyan-500/30
+                               transition-all duration-200"
+                    >
+                      {isPlaying ? (
+                        <Pause className="w-5 h-5 text-purple-600 dark:text-cyan-400" />
+                      ) : (
+                        <Play className="w-5 h-5 text-purple-600 dark:text-cyan-400" fill="currentColor" />
+                      )}
+                    </button>
+
+                    {/* Volume Control */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={toggleMute}
+                        className="p-2 rounded-full hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
+                                 transition-all duration-200"
+                      >
+                        {isMuted ? (
+                          <VolumeX className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                        ) : (
+                          <Volume2 className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                        )}
+                      </button>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={volume}
+                        onChange={handleVolumeChange}
+                        className="w-20 h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-purple-600 dark:accent-cyan-400"
+                      />
+                    </div>
+
+                    <div className="flex-1" />
+
+                    {/* Fullscreen Button */}
+                    <button
+                      onClick={() => videoRef.current?.requestFullscreen()}
+                      className="p-2 rounded-full hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
+                               transition-all duration-200"
+                    >
+                      <Maximize className="w-5 h-5 text-slate-700 dark:text-white/70" />
+                    </button>
+                  </div>
+                </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
 
-          {/* --- Metadata Overlay (Bottom) --- */}
+          {/* Metadata Overlay (Bottom) */}
           <AnimatePresence mode="wait">
             {showMetadata && (
               <motion.div 
@@ -413,27 +547,12 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Filename</span>
-                      <span className="font-medium truncate max-w-[180px]">{activeRawImage.filename}</span>
+                      <span className="font-medium truncate max-w-[180px]">{activeVideo.filename}</span>
                     </div>
                   </div>
 
-                  {/* Extension */}
-                  {activeRawImage.extension && (
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-purple-500/10 dark:bg-violet-500/10">
-                        <FileType className="w-4 h-4 text-purple-600 dark:text-violet-400" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs opacity-70">Extension</span>
-                        <span className="font-medium">
-                          {activeRawImage.extension.toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
                   {/* File Size */}
-                  {activeRawImage.metadata?.size_bytes && (
+                  {activeVideo.metadata?.size_bytes && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-purple-500/10 dark:bg-violet-500/10">
                         <HardDrive className="w-4 h-4 text-purple-600 dark:text-violet-400" />
@@ -441,87 +560,63 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">File Size</span>
                         <span className="font-medium">
-                          {formatFileSize(activeRawImage.metadata.size_bytes)}
+                          {formatFileSize(activeVideo.metadata.size_bytes)}
                         </span>
                       </div>
                     </div>
                   )}
 
                   {/* Dimensions */}
-                  {activeRawImage.width && activeRawImage.height && (
+                  {activeVideo.metadata?.width && activeVideo.metadata?.height && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-blue-500/10 dark:bg-sky-500/10">
-                        <Maximize className="w-4 h-4 text-blue-600 dark:text-sky-400" />
+                      <Maximize className="w-4 h-4 text-blue-600 dark:text-sky-400" />
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-xs opacity-70">Dimensions</span>
-                        <span className="font-medium">{activeRawImage.width}px × {activeRawImage.height}px</span>
+                        <span className="text-xs opacity-70">Resolution</span>
+                        <span className="font-medium">{activeVideo.metadata.width}px × {activeVideo.metadata.height}px</span>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Column 2: Camera & Lens Details */}
+                {/* Column 2: Video Details */}
                 <div className="flex flex-col gap-3">
                   {/* Camera Make & Model */}
-                  {(activeRawImage.metadata?.camera_make || activeRawImage.metadata?.camera_model) && (
+                  {activeVideo.metadata?.camera_make || activeVideo.metadata?.camera_model && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-amber-500/10 dark:bg-yellow-500/10">
                         <Camera className="w-4 h-4 text-amber-600 dark:text-yellow-400" />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Camera</span>
-                        <span className="font-medium">
-                          {[activeRawImage.metadata.camera_make, activeRawImage.metadata.camera_model].filter(Boolean).join(' ')}
-                        </span>
+                        <span className="font-medium">{activeVideo.metadata.camera_make} {activeVideo.metadata.camera_model}</span>
                       </div>
                     </div>
                   )}
 
-                  {/* Lens */}
-                  {(activeRawImage.metadata?.lens_make || activeRawImage.metadata?.lens_model) && (
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-cyan-500/10 dark:bg-teal-500/10">
-                        <Focus className="w-4 h-4 text-cyan-600 dark:text-teal-400" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs opacity-70">Lens</span>
-                        <span className="font-medium">
-                          {[activeRawImage.metadata.lens_make, activeRawImage.metadata.lens_model].filter(Boolean).join(' ')}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Exposure Settings */}
-                  {(activeRawImage.metadata?.exposure_time || activeRawImage.metadata?.iso || activeRawImage.metadata?.f_number || activeRawImage.metadata?.focal_length) && (
+                  {/* FPS */}
+                  {activeVideo.metadata?.fps && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-emerald-500/10 dark:bg-green-500/10">
-                        <Aperture className="w-4 h-4 text-emerald-600 dark:text-green-400" />
+                        <Timer className="w-4 h-4 text-emerald-600 dark:text-green-400" />
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-xs opacity-70">Settings</span>
-                        <span className="font-medium">
-                          {[
-                            activeRawImage.metadata.exposure_time && `${activeRawImage.metadata.exposure_time}`,
-                            activeRawImage.metadata.f_number && `f/${activeRawImage.metadata.f_number}`,
-                            activeRawImage.metadata.iso && `ISO ${activeRawImage.metadata.iso}`,
-                            activeRawImage.metadata.focal_length && `${activeRawImage.metadata.focal_length}mm`
-                          ].filter(Boolean).join(' • ')}
-                        </span>
+                        <span className="text-xs opacity-70">FPS</span>
+                        <span className="font-medium">{Math.round(activeVideo.metadata.fps)} fps</span>
                       </div>
                     </div>
                   )}
 
-                  {/* Megapixels */}
-                  {activeRawImage.megapixels && (
+                  {/* Codec */}
+                  {activeVideo.metadata?.codec && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-pink-500/10 dark:bg-rose-500/10">
-                        <Layers className="w-4 h-4 text-pink-600 dark:text-rose-400" />
+                        <FileCode className="w-4 h-4 text-pink-600 dark:text-rose-400" />
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-xs opacity-70">Megapixels</span>
-                        <span className="font-medium">{activeRawImage.megapixels.toFixed(1)} MP</span>
+                        <span className="text-xs opacity-70">Codec</span>
+                        <span className="font-medium">{activeVideo.metadata.codec}</span>
                       </div>
                     </div>
                   )}
@@ -530,7 +625,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                 {/* Column 3: Location & Date */}
                 <div className="flex flex-col gap-3">
                   {/* Location */}
-                  {(activeRawImage.city || activeRawImage.state || activeRawImage.country) && (
+                  {(activeVideo.city || activeVideo.state || activeVideo.country) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-green-500/10 dark:bg-teal-500/10">
                         <MapPin className="w-4 h-4 text-green-600 dark:text-teal-400" />
@@ -538,7 +633,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Location</span>
                         <span className="font-medium">
-                          {[activeRawImage.city, activeRawImage.state, activeRawImage.country].filter(Boolean).join(', ')}
+                          {[activeVideo.city, activeVideo.state, activeVideo.country].filter(Boolean).join(', ')}
                         </span>
                       </div>
                     </div>
@@ -551,7 +646,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Capture Date</span>
-                      <span className="font-medium">{new Date(activeRawImage.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                      <span className="font-medium">{new Date(activeVideo.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     </div>
                   </div>
 
@@ -563,7 +658,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Capture Time (UTC)</span>
                       <span className="font-medium">
-                        {new Date(activeRawImage.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {new Date(activeVideo.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
                       </span>
                     </div>
                   </div>
@@ -573,46 +668,14 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
             )}
           </AnimatePresence>
 
-          {/* --- Action Buttons (Bottom) --- */}
+          {/* Action Buttons (Bottom) */}
           <div className="absolute bottom-8 left-0 right-0 flex justify-center items-end z-50">
-            {/* Zoom Out Button - Left Outside */}
-            <button
-              onClick={handleZoomOut}
-              disabled={scale <= 1}
-              className={`p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
-                       shadow-lg transition-all duration-200 mr-4
-                       ${scale <= 1 
-                         ? 'opacity-50 cursor-not-allowed text-slate-400 dark:text-white/30' 
-                         : 'text-slate-700 dark:text-white/80 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 hover:border-purple-400/50 dark:hover:border-cyan-400/50 hover:scale-110'
-                       }`}
-            >
-              <ZoomOut className="w-5 h-5" />
-            </button>
-
-            {/* Center Column */}
-            <div className="flex flex-col items-center gap-3">
-              {/* Reset Button - Above Toolbar */}
-              {(scale > 1 || getNormalizedRotation() !== 0) && (
-                <button
-                  onClick={handleResetZoom}
-                  className="p-2 px-4 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
-                           text-slate-700 dark:text-white/80 
-                           hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
-                           hover:border-purple-400/50 dark:hover:border-cyan-400/50
-                           hover:scale-110
-                           shadow-lg transition-all duration-200"
-                >
-                  <span className="text-xs font-bold">Reset View</span>
-                </button>
-              )}
-
-              {/* Main Toolbar */}
-              <div className="glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
-                             rounded-full px-6 py-3 
-                             flex items-center gap-3 
-                             shadow-2xl backdrop-blur-xl">
-                
-                {/* Info Button */}
+            <div className="glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
+                           rounded-full px-6 py-3 
+                           flex items-center gap-3 
+                           shadow-2xl backdrop-blur-xl">
+              
+              {/* Info Button */}
               <button
                 onClick={() => setShowMetadata(!showMetadata)}
                 className={`p-2.5 rounded-full transition-all duration-200
@@ -663,32 +726,32 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
 
               {/* Heart Button */}
               <FavoriteButton 
-                id={activeRawImage.id}
-                type="raw"
-                initialFavorite={activeRawImage.is_favorite}
+                id={activeVideo.id}
+                type="video"
+                initialFavorite={activeVideo.is_favorite}
                 size="large"
                 onToggle={onFavoriteToggle}
               />
 
               {/* Share Button */}
               <ShareButton 
-                id={activeRawImage.id}
-                type="raw"
+                id={activeVideo.id}
+                type="video"
                 size="large"
               />
 
               {/* Download Button */}
               <DownloadButton 
-                id={activeRawImage.id}
-                type="raw"
+                id={activeVideo.id}
+                type="video"
                 size="large"
               />
 
               {/* Delete Button */}
               <DeleteButton 
-                key={`delete-${activeRawImage.id}`}
-                id={activeRawImage.id}
-                type="raw"
+                key={`delete-${activeVideo.id}`}
+                id={activeVideo.id}
+                type="video"
                 size="large"
                 onSuccess={(deletedId, deletedType) => {
                   // First, update global state (remove from arrays, update counts)
@@ -697,7 +760,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                   }
                   
                   // Then navigate to next file or close viewer
-                  if (currentIndex < totalRawImages - 1) {
+                  if (currentIndex < totalVideos - 1) {
                     // Move to next file
                     onNext();
                   } else if (currentIndex > 0) {
@@ -751,32 +814,6 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
 
                         <div className="h-px bg-purple-400/20 dark:bg-cyan-400/20 my-1 mx-2" />
 
-                        {/* Rotate Left */}
-                        <button
-                          onClick={() => {
-                            handleRotateLeft();
-                          }}
-                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
-                                   text-slate-700 dark:text-white/80 transition-all duration-200"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                          <span className="text-sm font-medium">Rotate Left</span>
-                        </button>
-
-                        {/* Rotate Right */}
-                        <button
-                          onClick={() => {
-                            handleRotateRight();
-                          }}
-                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
-                                   text-slate-700 dark:text-white/80 transition-all duration-200"
-                        >
-                          <RotateCw className="w-4 h-4" />
-                          <span className="text-sm font-medium">Rotate Right</span>
-                        </button>
-
-                        <div className="h-px bg-purple-400/20 dark:bg-cyan-400/20 my-1 mx-2" />
-
                         {/* Add to Album */}
                         <button
                           onClick={() => {
@@ -807,22 +844,7 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
                   )}
                 </AnimatePresence>
               </div>
-              </div>
             </div>
-
-            {/* Zoom In Button - Right Outside */}
-            <button
-              onClick={handleZoomIn}
-              disabled={scale >= 5}
-              className={`p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
-                       shadow-lg transition-all duration-200 ml-4
-                       ${scale >= 5 
-                         ? 'opacity-50 cursor-not-allowed text-slate-400 dark:text-white/30' 
-                         : 'text-slate-700 dark:text-white/80 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 hover:border-purple-400/50 dark:hover:border-cyan-400/50 hover:scale-110'
-                       }`}
-            >
-              <ZoomIn className="w-5 h-5" />
-            </button>
           </div>
 
           {/* Coming Soon Overlay */}
@@ -852,8 +874,8 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
         <EditLocationModal
           isOpen={isEditLocationModalOpen}
           onClose={() => setIsEditLocationModalOpen(false)}
-          fileType="raw"
-          fileId={activeRawImage.id}
+          fileType="video"
+          fileId={activeVideo.id}
           onSuccess={() => {
             // Notify parent grid to refresh
             if (onLocationUpdate) {
@@ -866,5 +888,5 @@ const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, total
   );
 };
 
-export default RawImageViewer;
+export default VideoViewer;
 

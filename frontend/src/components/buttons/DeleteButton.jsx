@@ -1,6 +1,6 @@
 import { Trash2, Loader2 } from 'lucide-react';
 import { useState } from 'react';
-import { api } from '../api';
+import { api } from '../../api';
 
 /**
  * Reusable Delete Button Component

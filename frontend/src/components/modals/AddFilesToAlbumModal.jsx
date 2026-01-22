@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { X, Check, Play, Loader2 } from "lucide-react";
-import { api } from "../api";
+import { api } from "../../api";
 
 export default function AddFilesToAlbumModal({ isOpen, onClose, albumId, albumName, onFilesAdded, updateProgressBar, removeProgressBar }) {
   const [allFiles, setAllFiles] = useState([]);

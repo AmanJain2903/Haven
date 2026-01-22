@@ -1,21 +1,19 @@
-import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock, MoreVertical, Play, Pause, Edit, RotateCcw, RotateCw, FolderPlus } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock, MoreVertical, Play, Pause, Edit, RotateCcw, RotateCw, FolderPlus, FileType, Focus } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '../contexts/ThemeContext';
-import { api } from '../api'; // Import your API helper
-import { formatFileSize } from '../utils/fileUtils';
-import FavoriteButton from './FavoriteButton';
-import ShareButton from './ShareButton';
-import DownloadButton from './DownloadButton';
-import DeleteButton from './DeleteButton';
-import EditLocationModal from './EditLocationModal';
+import { useTheme } from '../../contexts/ThemeContext';
+import { api } from '../../api';
+import { formatFileSize } from '../../utils/fileUtils';
+import FavoriteButton from '../buttons/FavoriteButton';
+import ShareButton from '../buttons/ShareButton';
+import DownloadButton from '../buttons/DownloadButton';
+import DeleteButton from '../buttons/DeleteButton';
+import EditLocationModal from '../modals/EditLocationModal';
 
-const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos, onFavoriteToggle, onLocationUpdate, isAddToAlbumModalOpen, setIsAddToAlbumModalOpen, onDelete, isSlideshowActive = false, isSlideshowPaused = false, pauseSlideshow, endSlideshow }) => {
+const RawImageViewer = ({ rawImage, onClose, onNext, onPrev, currentIndex, totalRawImages, onFavoriteToggle, onLocationUpdate, isAddToAlbumModalOpen, setIsAddToAlbumModalOpen, onDelete, isSlideshowActive = false, isSlideshowPaused = false, pauseSlideshow, endSlideshow }) => {
   const { isDark } = useTheme();
   
-  // --- NEW STATE: Active Photo Data ---
-  // We initialize this with the prop 'photo' so the UI renders immediately.
-  const [activePhoto, setActivePhoto] = useState(photo);
+  const [activeRawImage, setActiveRawImage] = useState(rawImage);
 
   const [direction, setDirection] = useState(0);
   const [prevIndex, setPrevIndex] = useState(currentIndex);
@@ -33,18 +31,18 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
   
   // Refs for cancelling in-flight image loads
   const thumbnailRef = useRef(null);
-  const fullImageRef = useRef(null);
+  const previewImageRef = useRef(null);
   
   // --- DEBOUNCE MEDIA LOADING TO PREVENT QUEUE BUILDUP ---
   useEffect(() => {
-    if (!photo) return;
+    if (!rawImage) return;
 
     // Cancel any in-flight image loads by clearing the src
     if (thumbnailRef.current) {
       thumbnailRef.current.src = '';
     }
-    if (fullImageRef.current) {
-      fullImageRef.current.src = '';
+    if (previewImageRef.current) {
+      previewImageRef.current.src = '';
     }
 
     // Reset media loading state immediately on navigation
@@ -61,45 +59,40 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
       if (thumbnailRef.current) {
         thumbnailRef.current.src = '';
       }
-      if (fullImageRef.current) {
-        fullImageRef.current.src = '';
+      if (previewImageRef.current) {
+        previewImageRef.current.src = '';
       }
     };
-  }, [photo]);
+  }, [rawImage]);
   
   // --- FETCH DETAILS LOGIC ---
   useEffect(() => {
-    if (!photo) return;
+    if (!rawImage) return;
 
-    // 1. Reset to the basic prop data immediately when the index changes.
-    // This ensures the transition is instant and we don't show the previous photo's details.
-    setActivePhoto(photo);
+    setActiveRawImage(rawImage);
 
     let isMounted = true;
 
     const fetchDetailedData = async () => {
       try {
-        // 2. Call the API
-        const details = await api.getImageDetails(photo.id);
+        const details = await api.getRawDetails(rawImage.id);
         
-        // 3. Update state only if the component is still mounted and looking at the same photo
-        if (isMounted && details && details.id === photo.id) {
-          setActivePhoto(details);
+        if (isMounted && details && details.id === rawImage.id) {
+          setActiveRawImage(details);
         }
       } catch (error) {
-        console.error("Failed to fetch detailed image data, using fallback.", error);
-        // We do nothing here, because activePhoto is already set to the 'photo' prop (fallback)
+        console.error("Failed to fetch detailed RAW image data, using fallback.", error);
       }
     };
 
     fetchDetailedData();
 
     return () => { isMounted = false; };
-  }, [photo]); // Run whenever the input photo object changes
+  }, [rawImage]);
 
-  if (!activePhoto) return null;
+  if (!activeRawImage) return null;
 
-  const hasNext = currentIndex < totalPhotos - 1;
+  const hasNext = currentIndex < totalRawImages - 1;
   const hasPrev = currentIndex > 0;
 
   // Update direction based on index change
@@ -107,10 +100,10 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
     if (currentIndex !== prevIndex) {
       setDirection(currentIndex > prevIndex ? 1 : -1);
       setPrevIndex(currentIndex);
-      setImageLoaded(false); // Reset when changing photos
-      setScale(1); // Reset zoom
-      setPosition({ x: 0, y: 0 }); // Reset position
-      setRotation(0); // Reset rotation
+      setImageLoaded(false);
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
+      setRotation(0);
     }
   }, [currentIndex, prevIndex]);
 
@@ -148,7 +141,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
     const newScale = Math.max(scale - 0.5, 1);
     setScale(newScale);
     if (newScale === 1) {
-      setPosition({ x: 0, y: 0 }); // Auto-center when fully zoomed out
+      setPosition({ x: 0, y: 0 });
     }
   };
 
@@ -169,7 +162,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
       const newScale = Math.max(1, Math.min(5, scale + delta));
       setScale(newScale);
       if (newScale === 1) {
-        setPosition({ x: 0, y: 0 }); // Auto-center when fully zoomed out
+        setPosition({ x: 0, y: 0 });
       }
     }
   };
@@ -200,7 +193,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
     handleResetZoom();
   };
 
-  // Handle Keyboard Navigation (Esc, Left, Right)
+  // Handle Keyboard Navigation
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
@@ -209,13 +202,11 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
     };
     window.addEventListener('keydown', handleKeyDown);
     
-    // Cleanup listener when component closes
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, currentIndex, hasNext, hasPrev]);
 
   // Prevent scrolling the background page while viewer is open
   useEffect(() => {
-    // Prevent scrolling on both body and html
     const originalBodyOverflow = document.body.style.overflow;
     const originalHtmlOverflow = document.documentElement.style.overflow;
     
@@ -223,7 +214,6 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
     document.documentElement.style.overflow = 'hidden';
     
     return () => {
-      // Restore overflow
       document.body.style.overflow = originalBodyOverflow;
       document.documentElement.style.overflow = originalHtmlOverflow;
     };
@@ -239,12 +229,12 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
     }
   }, [showComingSoon]);
 
-  // Slideshow auto-advance for images
+  // Slideshow auto-advance for raw images
   useEffect(() => {
     if (!isSlideshowActive || isSlideshowPaused || !imageLoaded) return;
 
     const timer = setTimeout(() => {
-      if (currentIndex < totalPhotos - 1) {
+      if (currentIndex < totalRawImages - 1) {
         // Move to next image
         handleNext();
       } else {
@@ -256,7 +246,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
     }, 4000); // 4 seconds per image
 
     return () => clearTimeout(timer);
-  }, [isSlideshowActive, isSlideshowPaused, imageLoaded, currentIndex, totalPhotos]);
+  }, [isSlideshowActive, isSlideshowPaused, imageLoaded, currentIndex, totalRawImages]);
 
   return (
     <motion.div 
@@ -286,7 +276,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
             <X className="w-6 h-6" />
           </button>
 
-          {/* --- Photo Counter --- */}
+          {/* --- RAW Counter --- */}
           <div className="absolute top-6 left-1/2 -translate-x-1/2 
                          glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
                          rounded-full px-6 py-2 
@@ -295,7 +285,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                          shadow-lg backdrop-blur-xl z-50">
             <span className="text-purple-600 dark:text-cyan-400">{currentIndex + 1}</span>
             <span className="mx-1.5 text-slate-400 dark:text-white/40">/</span>
-            <span>{totalPhotos}</span>
+            <span>{totalRawImages}</span>
           </div>
 
           {/* --- Navigation Arrows --- */}
@@ -329,7 +319,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
             <ChevronRight className="w-8 h-8" />
           </button>
 
-          {/* --- Main Image --- */}
+          {/* --- Main Image (Preview) --- */}
           <div 
             className="flex h-full w-full max-w-7xl items-center justify-center p-4 md:p-12 overflow-hidden"
             onWheel={handleWheel}
@@ -348,7 +338,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
               
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div 
-                  key={activePhoto.id} 
+                  key={activeRawImage.id} 
                   className="relative flex items-center justify-center"
                   animate={{ 
                     scale: scale,
@@ -358,7 +348,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                   willChange="transform"
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 >
-                  {/* Thumbnail - shown immediately, constrained */}
+                  {/* Thumbnail - shown immediately */}
                   {!imageLoaded && (
                     <motion.img 
                       ref={thumbnailRef}
@@ -366,21 +356,21 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                       animate={{ opacity: 1 }}
                       style={{willChange: 'opacity'}}
                       transition={{ duration: 0.2 }}
-                      src={activePhoto.thumbnail_url} 
-                      alt={activePhoto.filename}
+                      src={api.getRawThumbnailUrl(activeRawImage.id)}
+                      alt={activeRawImage.filename}
                       className="max-h-[70vh] max-w-full object-contain rounded-2xl shadow-2xl blur-sm"
                     />
                   )}
                   
-                  {/* Full image - loads in background, can be larger */}
+                  {/* Preview image (JPEG converted) */}
                   {shouldLoadMedia && (
                   <motion.img 
-                      ref={fullImageRef}
+                      ref={previewImageRef}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: imageLoaded ? 1 : 0 }}
                     transition={{ duration: 0.3 }}
-                    src={activePhoto.image_url} 
-                    alt={activePhoto.filename}
+                    src={api.getRawPreviewUrl(activeRawImage.id)}
+                    alt={activeRawImage.filename}
                     onLoad={() => setImageLoaded(true)}
                     className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
                     style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
@@ -423,12 +413,27 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Filename</span>
-                      <span className="font-medium truncate max-w-[180px]">{activePhoto.filename}</span>
+                      <span className="font-medium truncate max-w-[180px]">{activeRawImage.filename}</span>
                     </div>
                   </div>
 
+                  {/* Extension */}
+                  {activeRawImage.extension && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-purple-500/10 dark:bg-violet-500/10">
+                        <FileType className="w-4 h-4 text-purple-600 dark:text-violet-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs opacity-70">Extension</span>
+                        <span className="font-medium">
+                          {activeRawImage.extension.toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* File Size */}
-                  {activePhoto.metadata?.size_bytes && (
+                  {activeRawImage.metadata?.size_bytes && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-purple-500/10 dark:bg-violet-500/10">
                         <HardDrive className="w-4 h-4 text-purple-600 dark:text-violet-400" />
@@ -436,30 +441,30 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">File Size</span>
                         <span className="font-medium">
-                          {formatFileSize(activePhoto.metadata.size_bytes)}
+                          {formatFileSize(activeRawImage.metadata.size_bytes)}
                         </span>
                       </div>
                     </div>
                   )}
 
                   {/* Dimensions */}
-                  {activePhoto.width && activePhoto.height && (
+                  {activeRawImage.width && activeRawImage.height && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-blue-500/10 dark:bg-sky-500/10">
                         <Maximize className="w-4 h-4 text-blue-600 dark:text-sky-400" />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Dimensions</span>
-                        <span className="font-medium">{activePhoto.width}px × {activePhoto.height}px</span>
+                        <span className="font-medium">{activeRawImage.width}px × {activeRawImage.height}px</span>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Column 2: Camera Details */}
+                {/* Column 2: Camera & Lens Details */}
                 <div className="flex flex-col gap-3">
                   {/* Camera Make & Model */}
-                  {(activePhoto.metadata?.camera_make || activePhoto.metadata?.camera_model) && (
+                  {(activeRawImage.metadata?.camera_make || activeRawImage.metadata?.camera_model) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-amber-500/10 dark:bg-yellow-500/10">
                         <Camera className="w-4 h-4 text-amber-600 dark:text-yellow-400" />
@@ -467,14 +472,29 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Camera</span>
                         <span className="font-medium">
-                          {[activePhoto.metadata.camera_make, activePhoto.metadata.camera_model].filter(Boolean).join(' ')}
+                          {[activeRawImage.metadata.camera_make, activeRawImage.metadata.camera_model].filter(Boolean).join(' ')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Lens */}
+                  {(activeRawImage.metadata?.lens_make || activeRawImage.metadata?.lens_model) && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-cyan-500/10 dark:bg-teal-500/10">
+                        <Focus className="w-4 h-4 text-cyan-600 dark:text-teal-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs opacity-70">Lens</span>
+                        <span className="font-medium">
+                          {[activeRawImage.metadata.lens_make, activeRawImage.metadata.lens_model].filter(Boolean).join(' ')}
                         </span>
                       </div>
                     </div>
                   )}
 
                   {/* Exposure Settings */}
-                  {(activePhoto.metadata?.exposure_time || activePhoto.metadata?.iso || activePhoto.metadata?.f_number || activePhoto.metadata?.focal_length) && (
+                  {(activeRawImage.metadata?.exposure_time || activeRawImage.metadata?.iso || activeRawImage.metadata?.f_number || activeRawImage.metadata?.focal_length) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-emerald-500/10 dark:bg-green-500/10">
                         <Aperture className="w-4 h-4 text-emerald-600 dark:text-green-400" />
@@ -483,10 +503,10 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                         <span className="text-xs opacity-70">Settings</span>
                         <span className="font-medium">
                           {[
-                            activePhoto.metadata.exposure_time && `${activePhoto.metadata.exposure_time}`,
-                            activePhoto.metadata.f_number && `f/${activePhoto.metadata.f_number}`,
-                            activePhoto.metadata.iso && `ISO ${activePhoto.metadata.iso}`,
-                            activePhoto.metadata.focal_length && `${activePhoto.metadata.focal_length}mm`
+                            activeRawImage.metadata.exposure_time && `${activeRawImage.metadata.exposure_time}`,
+                            activeRawImage.metadata.f_number && `f/${activeRawImage.metadata.f_number}`,
+                            activeRawImage.metadata.iso && `ISO ${activeRawImage.metadata.iso}`,
+                            activeRawImage.metadata.focal_length && `${activeRawImage.metadata.focal_length}mm`
                           ].filter(Boolean).join(' • ')}
                         </span>
                       </div>
@@ -494,14 +514,14 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                   )}
 
                   {/* Megapixels */}
-                  {activePhoto.megapixels && (
+                  {activeRawImage.megapixels && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-pink-500/10 dark:bg-rose-500/10">
                         <Layers className="w-4 h-4 text-pink-600 dark:text-rose-400" />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Megapixels</span>
-                        <span className="font-medium">{activePhoto.megapixels.toFixed(1)} MP</span>
+                        <span className="font-medium">{activeRawImage.megapixels.toFixed(1)} MP</span>
                       </div>
                     </div>
                   )}
@@ -510,7 +530,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                 {/* Column 3: Location & Date */}
                 <div className="flex flex-col gap-3">
                   {/* Location */}
-                  {(activePhoto.city || activePhoto.state || activePhoto.country) && (
+                  {(activeRawImage.city || activeRawImage.state || activeRawImage.country) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-green-500/10 dark:bg-teal-500/10">
                         <MapPin className="w-4 h-4 text-green-600 dark:text-teal-400" />
@@ -518,7 +538,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Location</span>
                         <span className="font-medium">
-                          {[activePhoto.city, activePhoto.state, activePhoto.country].filter(Boolean).join(', ')}
+                          {[activeRawImage.city, activeRawImage.state, activeRawImage.country].filter(Boolean).join(', ')}
                         </span>
                       </div>
                     </div>
@@ -531,7 +551,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Capture Date</span>
-                      <span className="font-medium">{new Date(activePhoto.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                      <span className="font-medium">{new Date(activeRawImage.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     </div>
                   </div>
 
@@ -543,11 +563,11 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Capture Time (UTC)</span>
                       <span className="font-medium">
-                        {new Date(activePhoto.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {new Date(activeRawImage.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
                       </span>
-              </div>
-            </div>
-          </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </motion.div>
             )}
@@ -643,32 +663,32 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
 
               {/* Heart Button */}
               <FavoriteButton 
-                id={activePhoto.id}
-                type="image"
-                initialFavorite={activePhoto.is_favorite}
+                id={activeRawImage.id}
+                type="raw"
+                initialFavorite={activeRawImage.is_favorite}
                 size="large"
                 onToggle={onFavoriteToggle}
               />
 
               {/* Share Button */}
               <ShareButton 
-                id={activePhoto.id}
-                type="image"
+                id={activeRawImage.id}
+                type="raw"
                 size="large"
               />
 
               {/* Download Button */}
               <DownloadButton 
-                id={activePhoto.id}
-                type="image"
+                id={activeRawImage.id}
+                type="raw"
                 size="large"
               />
 
               {/* Delete Button */}
               <DeleteButton 
-                key={`delete-${activePhoto.id}`}
-                id={activePhoto.id}
-                type="image"
+                key={`delete-${activeRawImage.id}`}
+                id={activeRawImage.id}
+                type="raw"
                 size="large"
                 onSuccess={(deletedId, deletedType) => {
                   // First, update global state (remove from arrays, update counts)
@@ -677,7 +697,7 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
                   }
                   
                   // Then navigate to next file or close viewer
-                  if (currentIndex < totalPhotos - 1) {
+                  if (currentIndex < totalRawImages - 1) {
                     // Move to next file
                     onNext();
                   } else if (currentIndex > 0) {
@@ -832,8 +852,8 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
         <EditLocationModal
           isOpen={isEditLocationModalOpen}
           onClose={() => setIsEditLocationModalOpen(false)}
-          fileType="image"
-          fileId={activePhoto.id}
+          fileType="raw"
+          fileId={activeRawImage.id}
           onSuccess={() => {
             // Notify parent grid to refresh
             if (onLocationUpdate) {
@@ -841,8 +861,10 @@ const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos
             }
           }}
         />
+
       </motion.div>
   );
 };
 
-export default ImageViewer;
+export default RawImageViewer;
+

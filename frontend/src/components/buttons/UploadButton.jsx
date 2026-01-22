@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Upload } from 'lucide-react';
 import { useState } from 'react';
-import UploadModal from './UploadModal';
+import UploadModal from '../modals/UploadModal';
 
 export default function UploadButton({ isVisible = true }) {
   const [isModalOpen, setIsModalOpen] = useState(false);

@@ -1,6 +1,6 @@
 import { Heart } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { api } from '../api';
+import { api } from '../../api';
 
 /**
  * Reusable Favorite Button Component
