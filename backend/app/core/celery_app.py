@@ -1,7 +1,5 @@
-import os
-from celery import Celery
 from app.core.config import settings
-from celery.schedules import crontab
+from celery import Celery
 
 # 1. Define the Broker (Redis)
 # If running inside Docker, use "redis://haven_redis:6379/0"
@@ -27,13 +25,12 @@ celery_app.conf.update(
 )
 
 # 4. Auto-discover tasks from our modules
-# We will tell it to look inside 'app.tasks' folder
 celery_app.autodiscover_tasks(["app.tasks"])
 
 # 5. DEFINE THE BEAT SCHEDULE
 celery_app.conf.beat_schedule = {
     "sentinel-pulse-every-60s": {
-        "task": "sentinel_pulse",  # This name must match what we define in tasks.py
+        "task": "sentinel_pulse", 
         "schedule": 60.0,          # Run every 60 seconds
     },
 }

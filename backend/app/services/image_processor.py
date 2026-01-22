@@ -1,48 +1,24 @@
-import os
-from datetime import datetime
-from PIL import Image as PILImage, ImageOps, ExifTags
-from PIL.ExifTags import TAGS
-from pillow_heif import register_heif_opener
-from PIL.TiffImagePlugin import IFDRational
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-import hashlib
-from sqlalchemy.exc import IntegrityError
-# Database imports
-from app.core.database import SessionLocal
-from app.models import Image
-from app.core.config import settings
-
+from app.core.utils import get_float, get_location_parts, get_decimal_from_dms, ensure_dirs
 from app.ml.clip_client import generate_embedding
+from app.core.database import SessionLocal
+from app.core.constants import IMAGE_EXTS
+from app.core.config import settings
+from app.models import Image
+
+from PIL import Image as PILImage, ImageOps, ExifTags
+from pillow_heif import register_heif_opener
+from sqlalchemy.exc import IntegrityError
+from datetime import datetime
+from PIL.ExifTags import TAGS
+import hashlib
+import os
 
 # Register HEIC support
 register_heif_opener()
 
 THUMBNAIL_DIR = settings.THUMBNAIL_DIR
 
-# Define extensions for routing
-IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
-
 # --- HELPER FUNCTIONS ---
-
-def get_float(val):
-    if isinstance(val, IFDRational):
-        return float(val)
-    if isinstance(val, tuple) and len(val) == 2 and val[1] != 0:
-        return val[0] / val[1]
-    if isinstance(val, (int, float)):
-        return float(val)
-    return None
-
-def ensure_thumbnail_dir():
-    """Create thumbnail directory if it doesn't exist"""
-    global THUMBNAIL_DIR
-    try:
-        os.makedirs(THUMBNAIL_DIR, exist_ok=True)
-    except PermissionError:
-        import tempfile
-        THUMBNAIL_DIR = os.path.join(tempfile.gettempdir(), "haven_thumbnails")
-        os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
 def extract_exif_data(img):
     """
@@ -92,16 +68,6 @@ def extract_exif_data(img):
 
     return data
 
-def get_decimal_from_dms(dms, ref):
-    """Helper to convert degrees/minutes/seconds format to decimal format."""
-    degrees = dms[0]
-    minutes = dms[1]
-    seconds = dms[2]
-    decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
-    if ref in ['S', 'W']:
-        decimal = -decimal
-    return decimal
-
 def get_geotagging(img):
     """
     Robust GPS extraction that works for both HEIC and JPEG.
@@ -125,47 +91,11 @@ def get_geotagging(img):
         print(f"Error parsing GPS: {e}")
         return None
 
-def get_location_parts(latitude: float, longitude: float) -> dict:
-    """
-    Reverse geocode coordinates to get a human-readable location label.
-    """
-    try:
-        geolocator = Nominatim(user_agent="haven_photo_manager")
-        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10, language='en')
-        
-        if not location or not location.raw.get('address'):
-            return None
-        
-        address = location.raw['address']
-        parts = {
-            'city': None,
-            'state': None,
-            'country': None
-        }
-        
-        city = address.get('city') or address.get('town') or address.get('village') or address.get('municipality')
-        if city: parts['city'] = city
-        
-        state = address.get('state') or address.get('region')
-        if state: parts['state'] = state
-        
-        country = address.get('country')
-        if country: parts['country'] = country
-        
-        return parts
-        
-    except (GeocoderTimedOut, GeocoderServiceError) as e:
-        print(f"Geocoding service error: {e}")
-        return None
-    except Exception as e:
-        print(f"Error reverse geocoding ({latitude}, {longitude}): {e}")
-        return None
-
 def ensure_thumbnail(file_path: str, filename: str) -> str:
     """
     Creates a 300px optimized JPEG thumbnail.
     """
-    ensure_thumbnail_dir()
+    ensure_dirs([THUMBNAIL_DIR])
     path_hash = hashlib.md5(file_path.encode('utf-8')).hexdigest()
     thumb_filename = f"thumb_{path_hash}.jpg"
     thumb_path = os.path.join(THUMBNAIL_DIR, thumb_filename)
@@ -209,7 +139,10 @@ def process_image_file(full_path: str, filename: str):
             return
         
         # 1. Generate Thumbnail
-        ensure_thumbnail(full_path, filename)
+        thumbnail_filename = ensure_thumbnail(full_path, filename)
+        if not thumbnail_filename:
+            print(f"❌ Could not create thumbnail for {filename}")
+            return
         
         width, height = None, None
         mp = None
@@ -260,6 +193,9 @@ def process_image_file(full_path: str, filename: str):
         
         if not vector_embedding:
             print(f"⚠️ Warning: Could not generate embedding for {filename}")
+            is_processed = False
+        else:
+            is_processed = True
 
         # 4. Save to Database
         db_image = Image(
@@ -283,8 +219,7 @@ def process_image_file(full_path: str, filename: str):
             
             # Save the Vector!
             embedding=vector_embedding, 
-            
-            is_processed=True
+            is_processed=is_processed
         )
         try:
             db.add(db_image)

@@ -1,13 +1,15 @@
-import os
 from pydantic_settings import BaseSettings
-from typing import Optional
 from pathlib import Path
 import platform
+import os
 
 class Settings(BaseSettings):
 
-    PROJECT_NAME: str = os.getenv("PROJECT_NAME", "HavenFallback")
+    # Deployment settings
+    HOST_URL: str = os.getenv("HOST_URL", "http://localhost:8000")
 
+    # Project settings
+    PROJECT_NAME: str = os.getenv("PROJECT_NAME", "HavenFallback")
     PROJECT_VERSION: str = os.getenv("PROJECT_VERSION", "v0.0.0")
 
     # PostgreSQL settings
@@ -19,9 +21,6 @@ class Settings(BaseSettings):
 
     # Redis settings
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
-
-    # Where the raw photos live (NAS/HDD)
-    PHOTOS_DIR: str = os.getenv("PHOTOS_DIR", "/photos")
 
     @staticmethod
     def getDefaultPath() -> tuple[str, str]:
@@ -54,9 +53,8 @@ class Settings(BaseSettings):
     # AI/ML settings
     CLIP_SERVICE_MODEL: str = os.getenv("CLIP_SERVICE_MODEL", "clip-ViT-B-32")
     CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION: int = int(os.getenv("CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION", "512"))
+    CLIP_SERVICE_MODEL_THRESHOLD: float = float(os.getenv("CLIP_SERVICE_MODEL_THRESHOLD", "0.8"))
 
-    # Deployment settings
-    HOST_URL: str = os.getenv("HOST_URL", "http://localhost:8000")
 
     @property
     def DATABASE_URL(self) -> str:

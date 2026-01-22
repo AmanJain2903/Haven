@@ -1,145 +1,21 @@
-import os
-from fastapi import Depends, APIRouter, Response
-from sqlalchemy.orm import Session, load_only
-from sqlalchemy import desc, case, cast, union_all, literal
-from sqlalchemy.types import Integer, String, Float, Boolean, DateTime, BigInteger
-from pgvector.sqlalchemy import Vector
-from app.core.database import get_db, engine
+from app.core.utils import get_coordinates, get_location_parts
+from app.core.database import get_db
+from app.core.constants import ALL_COLUMNS
+from app.core.constants import FILE_TYPES
 from app import models
-from fastapi.responses import FileResponse
+
+from sqlalchemy import desc, case, cast, union_all, literal
+from fastapi import Depends, APIRouter
+from sqlalchemy.orm import Session
+from app.core.config import settings
 from fastapi import HTTPException
 from typing import List
-from PIL import Image
-import pillow_heif
-import io
 import hashlib
-from app.core.config import settings
-import numpy as np
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-
+import os
 
 backend_url = settings.HOST_URL
 dimension = settings.CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION
 router = APIRouter()
-
-# "Master List" of all possible columns
-# Format: ("json_key", "model_attribute_name", "SQL Type")
-# If the attribute exists on the model, we use it. If not, we use NULL.
-ALL_COLUMNS = [
-    # --- Common ---
-    ("id", "id", Integer),
-    ("filename", "filename", String),
-    ("file_size", "file_size", BigInteger),
-    ("capture_date", "capture_date", DateTime),
-    ("width", "width", Integer),
-    ("height", "height", Integer),
-
-    # --- Favorite ---
-    ("is_favorite", "is_favorite", Boolean),
-    
-    # --- Location ---
-    ("city", "city", String),
-    ("state", "state", String),
-    ("country", "country", String),
-    ("latitude", "latitude", Float),
-    ("longitude", "longitude", Float),
-
-    # --- Exif ---
-    ("megapixels", "megapixels", Float),
-    ("iso", "iso", Integer),
-    ("f_number", "f_number", Float),
-    ("exposure_time", "exposure_time", String),
-    ("focal_length", "focal_length", Float),
-    
-    # --- Camera Gear (Commonish) ---
-    ("camera_make", "camera_make", String),
-    ("camera_model", "camera_model", String),
-
-    # --- Intelligence ---
-    ("is_processed", "is_processed", Boolean),
-    ("embedding", "embedding", Vector(dimension)),
-    
-    # --- RAW / Photo Specific ---
-    ("lens_make", "lens_make", String),
-    ("lens_model", "lens_model", String),
-    ("flash_fired", "flash_fired", Boolean),
-    ("extension", "extension", String), # Specific to RAW usually
-    
-    # --- Video Specific ---
-    ("duration", "duration", Float),
-    ("fps", "fps", Float),
-    ("codec", "codec", String),
-
-    # --- System ---
-    ("created_at", "created_at", DateTime),
-]
-
-def get_coordinates(city: str = None, state: str = None, country: str = None) -> tuple:
-    """
-    Forward Geocoding: City, State, Country -> (Latitude, Longitude)
-    Returns: (latitude, longitude) as floats, or None if not found.
-    """
-    try:
-        geolocator = Nominatim(user_agent="haven_photo_manager")
-        
-        # Build a structured query dict (more accurate than a raw string)
-        query = {}
-        if city: query['city'] = city
-        if state: query['state'] = state
-        if country: query['country'] = country
-        
-        if not query:
-            return None
-
-        # Perform the lookup
-        location = geolocator.geocode(query, timeout=10, language='en')
-        
-        if location:
-            return (location.latitude, location.longitude)
-        else:
-            print(f"❌ Location not found: {query}")
-            return None
-
-    except Exception as e:
-        print(f"❌ Error getting coordinates: {e}")
-        return None
-
-def get_location_parts(latitude: float, longitude: float) -> dict:
-    """
-    Reverse geocode coordinates to get a human-readable location label.
-    """
-    try:
-        geolocator = Nominatim(user_agent="haven_photo_manager")
-        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10, language='en')
-        
-        if not location or not location.raw.get('address'):
-            return None
-        
-        address = location.raw['address']
-        parts = {
-            'city': None,
-            'state': None,
-            'country': None
-        }
-        
-        city = address.get('city') or address.get('town') or address.get('village') or address.get('municipality')
-        if city: parts['city'] = city
-        
-        state = address.get('state') or address.get('region')
-        if state: parts['state'] = state
-        
-        country = address.get('country')
-        if country: parts['country'] = country
-        
-        return parts
-        
-    except (GeocoderTimedOut, GeocoderServiceError) as e:
-        print(f"Geocoding service error: {e}")
-        return None
-    except Exception as e:
-        print(f"Error reverse geocoding ({latitude}, {longitude}): {e}")
-        return None
 
 @router.get("/images", response_model=List[dict])
 def get_map_data_images(db: Session = Depends(get_db)):
@@ -365,7 +241,7 @@ def get_location_data(fileType: str, id: int, db: Session = Depends(get_db)):
     """
     if not fileType or not id:
         raise HTTPException(status_code=400, detail="File type and ID are required")
-    if fileType not in ["image", "video", "raw"]:
+    if fileType not in FILE_TYPES:
         raise HTTPException(status_code=400, detail="Invalid file type")
     if fileType == "image":
         media = db.query(models.Image).filter(models.Image.id == id).first()
@@ -386,7 +262,7 @@ def update_location_data(fileType: str, id: int, city: str = None, state: str = 
     """
     if not fileType or not id:
         raise HTTPException(status_code=400, detail="File type and ID are required")
-    if fileType not in ["image", "video", "raw"]:
+    if fileType not in FILE_TYPES:
         raise HTTPException(status_code=400, detail="Invalid file type")
     if fileType == "image":
         media = db.query(models.Image).filter(models.Image.id == id).first()

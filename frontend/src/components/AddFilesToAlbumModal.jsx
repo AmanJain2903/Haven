@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { X, Check, Play, Loader2 } from "lucide-react";
-import { api, batchAddToAlbum, getBatchTaskStatus } from "../api";
+import { api } from "../api";
 
 export default function AddFilesToAlbumModal({ isOpen, onClose, albumId, albumName, onFilesAdded, updateProgressBar, removeProgressBar }) {
   const [allFiles, setAllFiles] = useState([]);
@@ -195,7 +195,7 @@ export default function AddFilesToAlbumModal({ isOpen, onClose, albumId, albumNa
 
     try {
       // Start batch operation via Celery
-      const { task_id, total } = await batchAddToAlbum(albumId, filesToAdd);
+      const { task_id, total } = await api.batchAddToAlbum(albumId, filesToAdd);
       console.log(`📦 Started batch add task: ${task_id}`);
 
       // Add progress bar
@@ -211,7 +211,7 @@ export default function AddFilesToAlbumModal({ isOpen, onClose, albumId, albumNa
       // Poll for status every second
       const pollInterval = setInterval(async () => {
         try {
-          const status = await getBatchTaskStatus(task_id);
+          const status = await api.getBatchTaskStatus(task_id);
           console.log(`📊 Task ${task_id} status:`, status);
 
           // Update progress bar

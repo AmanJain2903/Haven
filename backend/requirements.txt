@@ -8,6 +8,7 @@ pillow-heif==1.1.1
 pillow-avif-plugin==1.4.3
 sentence-transformers==5.2.0
 geopy==2.4.1
+opencv-python==4.13.0.90
 
 # Background Tasks
 celery==5.3.6

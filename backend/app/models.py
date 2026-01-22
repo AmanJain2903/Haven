@@ -1,11 +1,11 @@
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.mutable import MutableList
-from sqlalchemy.sql import func
+from sqlalchemy.types import BigInteger
 from pgvector.sqlalchemy import Vector
 from app.core.database import Base
+from sqlalchemy.sql import func
 import os
-from sqlalchemy.types import BigInteger
 
 class SystemConfig(Base):
     __tablename__ = "system_config"

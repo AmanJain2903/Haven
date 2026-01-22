@@ -1,20 +1,20 @@
-from app.core.celery_app import celery_app
+from app.models import SystemConfig, Image, Video, RawImage, Albums
+from app.core.constants import REQUIRED_FOLDERS, HOT_STORAGE_FOLDERS
+from app.services.raw_image_processor import process_raw_file
 from app.services.image_processor import process_image_file
-import redis
-import os
+from app.services.video_processor import process_video_file 
+from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
 from app.core.config import settings
-from app.models import SystemConfig, Image, Video, RawImage, Albums
-from app.services.video_processor import process_video_file 
-from app.services.raw_image_processor import process_raw_file
-from sqlalchemy.ext.mutable import MutableList
+
+from sqlalchemy import inspect, text
 from datetime import datetime
-import zipfile
 import tempfile
-import uuid
+import zipfile
+import redis
 import csv
-import io
-from sqlalchemy import inspect, text, create_engine
+import os
+
 
 # Redis Connection for Locking (Same URL as Celery)
 redis_client = redis.from_url(settings.REDIS_URL)
@@ -101,7 +101,7 @@ def sentinel_pulse():
         db.close()
 
 # --- IMAGE WORKER ---
-@celery_app.task(name="process_image", bind=True, max_retries=0)
+@celery_app.task(bind=True, max_retries=0, name="process_image")
 def task_process_image(self, full_path: str, filename: str):
     """
     Background job to process a single image.
@@ -176,14 +176,12 @@ def task_batch_add_to_album(self, task_id: str, album_id: int, files: list):
 
         if not album_id:
             print(f"❌ [Batch Add] Album ID is required")
-            failed += 1
             return {
                 "status": "failed",
                 "error": "Album ID is required"
             }
         if not files:
             print(f"❌ [Batch Add] Files are required")
-            failed += 1
             return {
                 "status": "failed",
                 "error": "Files are required"
@@ -218,39 +216,43 @@ def task_batch_add_to_album(self, task_id: str, album_id: int, files: list):
                     if file_obj and file_id not in (album.album_images_ids or []):
                         if album.album_images_ids is None:
                             album.album_images_ids = []
-                        album.album_images_ids = list(album.album_images_ids) + [file_id]
-                        album.album_images_count = len(album.album_images_ids)
+                        album.album_images_ids.append(file_id)
+                        album.album_images_count += 1
+                        album.album_total_count += 1
+                        album.album_size += file_obj.file_size
+                        file_obj.album_ids.append(album_id)
+                        if not album.album_cover_id or not album.album_cover_type:
+                            album.album_cover_id = file_id
+                            album.album_cover_type = file_type
+                        album.album_updated_at = datetime.now()
                 elif file_type == "video":
                     file_obj = db.query(Video).filter(Video.id == file_id).first()
                     if file_obj and file_id not in (album.album_videos_ids or []):
                         if album.album_videos_ids is None:
                             album.album_videos_ids = []
-                        album.album_videos_ids = list(album.album_videos_ids) + [file_id]
-                        album.album_videos_count = len(album.album_videos_ids)
+                        album.album_videos_ids.append(file_id)
+                        album.album_videos_count += 1
+                        album.album_total_count += 1
+                        album.album_size += file_obj.file_size
+                        file_obj.album_ids.append(album_id)
+                        if not album.album_cover_id or not album.album_cover_type:
+                            album.album_cover_id = file_id
+                            album.album_cover_type = file_type
+                        album.album_updated_at = datetime.now()
                 elif file_type == "raw":
                     file_obj = db.query(RawImage).filter(RawImage.id == file_id).first()
                     if file_obj and file_id not in (album.album_raw_images_ids or []):
                         if album.album_raw_images_ids is None:
                             album.album_raw_images_ids = []
-                        album.album_raw_images_ids = list(album.album_raw_images_ids) + [file_id]
-                        album.album_raw_images_count = len(album.album_raw_images_ids)
-                
-                # Update total count and size
-                album.album_total_count = (
-                    len(album.album_images_ids or []) +
-                    len(album.album_videos_ids or []) +
-                    len(album.album_raw_images_ids or [])
-                )
-                
-                if file_obj:
-                    album.album_size = (album.album_size or 0) + (file_obj.file_size or 0)
-                    file_obj.album_ids = list(file_obj.album_ids or []) + [album_id]
-                
-                if not album.album_cover_id or not album.album_cover_type:
-                    album.album_cover_id = file_id
-                    album.album_cover_type = file_type
-                
-                album.album_updated_at = datetime.now()
+                        album.album_raw_images_ids.append(file_id)
+                        album.album_raw_images_count += 1
+                        album.album_total_count += 1
+                        album.album_size += file_obj.file_size
+                        file_obj.album_ids.append(album_id)
+                        if not album.album_cover_id or not album.album_cover_type:
+                            album.album_cover_id = file_id
+                            album.album_cover_type = file_type
+                        album.album_updated_at = datetime.now()
                 
                 db.commit()
                 completed += 1
@@ -324,17 +326,17 @@ def task_batch_delete_album(self, task_id: str, album_id: int):
         for file_id in album.album_images_ids or []:
             file_obj = db.query(Image).filter(Image.id == file_id).first()
             if file_obj and file_obj.album_ids:
-                file_obj.album_ids = [aid for aid in file_obj.album_ids if aid != album_id]
+                file_obj.album_ids.remove(album_id)
         
         for file_id in album.album_videos_ids or []:
             file_obj = db.query(Video).filter(Video.id == file_id).first()
             if file_obj and file_obj.album_ids:
-                file_obj.album_ids = [aid for aid in file_obj.album_ids if aid != album_id]
+                file_obj.album_ids.remove(album_id)
         
         for file_id in album.album_raw_images_ids or []:
             file_obj = db.query(RawImage).filter(RawImage.id == file_id).first()
             if file_obj and file_obj.album_ids:
-                file_obj.album_ids = [aid for aid in file_obj.album_ids if aid != album_id]
+                file_obj.album_ids.remove(album_id)
         
         # Delete album
         db.delete(album)
@@ -370,8 +372,6 @@ def task_create_album_zip(self, task_id: str, album_id: int, album_name: str):
         album_name: Album name for the zip filename
     """
     import zipfile
-    import tempfile
-    from pathlib import Path
     
     db = SessionLocal()
     
@@ -438,7 +438,7 @@ def task_create_album_zip(self, task_id: str, album_id: int, album_name: str):
             "album_id": album_id,
             "album_name": album_name
         })
-        redis_client.expire(f"download_task:{task_id}", 7200)  # Expire after 2 hours
+        redis_client.expire(f"download_task:{task_id}", 14400)  # Expire after 4 hours
         
         print(f"📦 [Album Download] Starting: {total_files} files for album '{album_name}'")
 
@@ -537,7 +537,7 @@ def task_create_haven_vault_zip(self, task_id: str, storage_path: str):
             return {"status": "cancelled", "message": "Task cancelled by user"}
 
         # Define the three directories to process
-        dirs_to_process = ["images", "videos", "raw"]
+        dirs_to_process = REQUIRED_FOLDERS
         
         # Count total files upfront using os.listdir
         total_files = 0
@@ -546,11 +546,6 @@ def task_create_haven_vault_zip(self, task_id: str, storage_path: str):
             dir_path = os.path.join(storage_path, dir_name)
             file_lists[dir_name] = []
             if os.path.exists(dir_path) and os.path.isdir(dir_path):
-                # List all files in the directory
-                # files = [f for f in os.listdir(dir_path) 
-                #         if os.path.isfile(os.path.join(dir_path, f))]
-                # file_lists[dir_name] = files
-                # total_files += len(files)
                 with os.scandir(dir_path) as entries:
                     for entry in entries:
                         if entry.is_file():
@@ -690,7 +685,7 @@ def task_create_haven_app_data_zip(self, task_id: str, storage_path: str):
             return {"status": "cancelled", "message": "Task cancelled by user"}
 
         # Define the three directories to process
-        dirs_to_process = ["thumbnails", "raw_previews", "raw_thumbnails", "video_previews", "video_thumbnails"]
+        dirs_to_process = HOT_STORAGE_FOLDERS
         
         # Count total files upfront using os.listdir
         total_files = 0
@@ -699,11 +694,6 @@ def task_create_haven_app_data_zip(self, task_id: str, storage_path: str):
             dir_path = os.path.join(storage_path, dir_name)
             file_lists[dir_name] = []
             if os.path.exists(dir_path) and os.path.isdir(dir_path):
-                # List all files in the directory
-                # files = [f for f in os.listdir(dir_path) 
-                #         if os.path.isfile(os.path.join(dir_path, f))]
-                # file_lists[dir_name] = files
-                # total_files += len(files)
                 with os.scandir(dir_path) as entries:
                     for entry in entries:
                         if entry.is_file():

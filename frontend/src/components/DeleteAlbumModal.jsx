@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { X, AlertTriangle } from "lucide-react";
-import { api, batchDeleteAlbum, getBatchTaskStatus } from "../api";
+import { api } from "../api";
 
 export default function DeleteAlbumModal({ isOpen, onClose, onSuccess, albumId, albumName, updateProgressBar, removeProgressBar, hasActiveDownload, cancelAlbumDownload }) {
   const [error, setError] = useState(null);
@@ -55,7 +55,7 @@ export default function DeleteAlbumModal({ isOpen, onClose, onSuccess, albumId, 
       }
 
       // Start batch delete operation via Celery
-      const { task_id } = await batchDeleteAlbum(albumId);
+      const { task_id } = await api.batchDeleteAlbum(albumId);
       console.log(`🗑️ Started batch delete task: ${task_id}`);
 
       // Add progress bar (in-progress state)
@@ -71,7 +71,7 @@ export default function DeleteAlbumModal({ isOpen, onClose, onSuccess, albumId, 
       // Poll for status every second
       const pollInterval = setInterval(async () => {
         try {
-          const status = await getBatchTaskStatus(task_id);
+          const status = await api.getBatchTaskStatus(task_id);
           console.log(`📊 Delete task ${task_id} status:`, status);
 
           // Update progress bar

@@ -1,158 +1,29 @@
-import os
-from fastapi import Depends, APIRouter, Response
-from sqlalchemy.orm import Session, load_only
-from sqlalchemy import desc, case, literal, union_all, cast
-from app.core.database import get_db, engine
-from app import models
-from fastapi.responses import FileResponse
-from fastapi import HTTPException
-from typing import List
-from sqlalchemy.types import Integer, String, Float, Boolean, DateTime, BigInteger
-from pgvector.sqlalchemy import Vector
-from sqlalchemy.dialects.postgresql import ARRAY
-from PIL import Image
-import pillow_heif
-import io
-import hashlib
-from app.core.config import settings
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-from datetime import datetime
-from sqlalchemy.ext.mutable import MutableList
-import numpy as np
-import uuid
 from app.tasks import task_batch_add_to_album, task_batch_delete_album, task_create_album_zip
-import redis
+from app.core.utils import get_coordinates, get_location_parts
+from app.core.database import get_db
+from app.core.constants import ALL_COLUMNS
+from app.core.constants import FILE_TYPES
 from app.core.config import settings
+from app import models
+
+from sqlalchemy import desc, case, literal, union_all, cast
+from fastapi import Depends, APIRouter, Response
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from datetime import datetime
+from typing import List
+import numpy as np
+import hashlib
+import redis
+import uuid
+import os
 
 redis_client = redis.from_url(settings.REDIS_URL)
-
 
 backend_url = settings.HOST_URL
 dimension = settings.CLIP_SERVICE_MODEL_EMBEDDING_DIMENSION
 
 router = APIRouter()
-
-# "Master List" of all possible columns
-# Format: ("json_key", "model_attribute_name", "SQL Type")
-# If the attribute exists on the model, we use it. If not, we use NULL.
-ALL_COLUMNS = [
-    # --- Common ---
-    ("id", "id", Integer),
-    ("filename", "filename", String),
-    ("file_size", "file_size", BigInteger),
-    ("capture_date", "capture_date", DateTime),
-    ("width", "width", Integer),
-    ("height", "height", Integer),
-
-    # --- Favorite ---
-    ("is_favorite", "is_favorite", Boolean),
-    
-    # --- Location ---
-    ("city", "city", String),
-    ("state", "state", String),
-    ("country", "country", String),
-    ("latitude", "latitude", Float),
-    ("longitude", "longitude", Float),
-
-    # --- Exif ---
-    ("megapixels", "megapixels", Float),
-    ("iso", "iso", Integer),
-    ("f_number", "f_number", Float),
-    ("exposure_time", "exposure_time", String),
-    ("focal_length", "focal_length", Float),
-    
-    # --- Camera Gear (Commonish) ---
-    ("camera_make", "camera_make", String),
-    ("camera_model", "camera_model", String),
-
-    # --- Intelligence ---
-    ("is_processed", "is_processed", Boolean),
-    ("embedding", "embedding", Vector(dimension)),
-    
-    # --- RAW / Photo Specific ---
-    ("lens_make", "lens_make", String),
-    ("lens_model", "lens_model", String),
-    ("flash_fired", "flash_fired", Boolean),
-    ("extension", "extension", String), # Specific to RAW usually
-    
-    # --- Video Specific ---
-    ("duration", "duration", Float),
-    ("fps", "fps", Float),
-    ("codec", "codec", String),
-
-    # --- System ---
-    ("created_at", "created_at", DateTime),
-
-    # --- Album Specific ---
-    ("album_ids", "album_ids", MutableList.as_mutable(ARRAY(Integer))),
-]
-
-def get_coordinates(city: str = None, state: str = None, country: str = None) -> tuple:
-    """
-    Forward Geocoding: City, State, Country -> (Latitude, Longitude)
-    Returns: (latitude, longitude) as floats, or None if not found.
-    """
-    try:
-        geolocator = Nominatim(user_agent="haven_photo_manager")
-        
-        # Build a structured query dict (more accurate than a raw string)
-        query = {}
-        if city: query['city'] = city
-        if state: query['state'] = state
-        if country: query['country'] = country
-        
-        if not query:
-            return None
-
-        # Perform the lookup
-        location = geolocator.geocode(query, timeout=10, language='en')
-        
-        if location:
-            return (location.latitude, location.longitude)
-        else:
-            print(f"❌ Location not found: {query}")
-            return None
-
-    except Exception as e:
-        print(f"❌ Error getting coordinates: {e}")
-        return None
-
-def get_location_parts(latitude: float, longitude: float) -> dict:
-    """
-    Reverse geocode coordinates to get a human-readable location label.
-    """
-    try:
-        geolocator = Nominatim(user_agent="haven_photo_manager")
-        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10, language='en')
-        
-        if not location or not location.raw.get('address'):
-            return None
-        
-        address = location.raw['address']
-        parts = {
-            'city': None,
-            'state': None,
-            'country': None
-        }
-        
-        city = address.get('city') or address.get('town') or address.get('village') or address.get('municipality')
-        if city: parts['city'] = city
-        
-        state = address.get('state') or address.get('region')
-        if state: parts['state'] = state
-        
-        country = address.get('country')
-        if country: parts['country'] = country
-        
-        return parts
-        
-    except (GeocoderTimedOut, GeocoderServiceError) as e:
-        print(f"Geocoding service error: {e}")
-        return None
-    except Exception as e:
-        print(f"Error reverse geocoding ({latitude}, {longitude}): {e}")
-        return None
 
 @router.post("/create", response_model=dict)
 def create_album(albumName: str = None, albumDescription: str = None, albumLocation: str = None, albumCity: str = None, albumState: str = None, albumCountry: str = None, db: Session = Depends(get_db)):
@@ -232,7 +103,6 @@ def get_albums(db: Session = Depends(get_db)):
     finally:
         db.close()
 
-
 @router.get("/getAlbum/{albumId}", response_model=dict)
 def get_album(albumId: int, db: Session = Depends(get_db)):
     if not albumId:
@@ -301,35 +171,6 @@ def update_album(albumId: int, albumName: str = None, albumDescription: str = No
     finally:
         db.close()
 
-@router.delete("/delete/{albumId}", response_model=dict)
-def delete_album(albumId: int, db: Session = Depends(get_db)):
-    if not albumId:
-        raise HTTPException(status_code=400, detail="Album ID is required")
-    try:
-        album = db.query(models.Albums).filter(models.Albums.id == albumId).first()
-        if not album:
-            raise HTTPException(status_code=404, detail="Album not found")
-        # Remove all images in this album
-        for file_id in album.album_images_ids or []:
-            remove_from_album("image", file_id, albumId, db)
-
-        # Remove all videos in this album
-        for file_id in album.album_videos_ids or []:
-            remove_from_album("video", file_id, albumId, db)
-
-        # Remove all raw images in this album
-        for file_id in album.album_raw_images_ids or []:
-            remove_from_album("raw", file_id, albumId, db)
-
-        db.delete(album)
-        db.commit()
-        return {"message": "Album deleted successfully", "album": albumId}
-    except Exception as e:
-        print(f"❌ Error deleting album: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
 @router.post("/addToAlbum/{albumId}/{fileType}/{id}", response_model=dict)
 def add_to_album(fileType: str, id: int, albumId: int, db: Session = Depends(get_db)):
     if not fileType:
@@ -366,11 +207,11 @@ def add_to_album(fileType: str, id: int, albumId: int, db: Session = Depends(get
                 album.album_raw_images_count += 1
                 album.album_raw_images_ids.append(file.id)
             album.album_total_count += 1
-            album.album_updated_at = datetime.now()
             album.album_size += file.file_size
             if not album.album_cover_id or not album.album_cover_type:
                 album.album_cover_id = file.id
                 album.album_cover_type = fileType
+            album.album_updated_at = datetime.now()
         db.commit()
         return {"message": "File added to album successfully", "file": file.id}
     except Exception as e:
@@ -415,7 +256,6 @@ def remove_from_album(fileType: str, id: int, albumId: int, db: Session = Depend
                 album.album_raw_images_count -= 1
                 album.album_raw_images_ids.remove(file.id)
             album.album_total_count -= 1
-            album.album_updated_at = datetime.now()
             album.album_size -= file.file_size
             if album.album_cover_id == file.id and album.album_cover_type == fileType:
                 if album.album_images_count > 0:
@@ -430,6 +270,7 @@ def remove_from_album(fileType: str, id: int, albumId: int, db: Session = Depend
                 else:
                     album.album_cover_id = None
                     album.album_cover_type = None
+            album.album_updated_at = datetime.now()
         db.commit()
         return {"message": "File removed from album successfully", "file": file.id}
     except Exception as e:
@@ -550,22 +391,22 @@ def get_album_timeline(
     q_raws   = build_select(models.RawImage, "raw")
 
     # --- 3. Union & Sort ---
-    combined_query = union_all(q_images, q_videos, q_raws).alias("media_union")
+    if mediaFilter == "all":
+        combined_query = union_all(q_images, q_videos, q_raws).alias("media_union")
+    elif mediaFilter == "videos":
+        combined_query = union_all(q_videos).alias("media_union")
+    elif mediaFilter == "raw":
+        combined_query = union_all(q_raws).alias("media_union")
+    elif mediaFilter == "photos":
+        combined_query = union_all(q_images).alias("media_union")
+    else:
+        combined_query = union_all(q_images, q_videos, q_raws).alias("media_union")
 
     # Base query for counting (without offset/limit)
     base_query = db.query(combined_query).filter(combined_query.c.album_ids.contains([albumId]))
     
     # Calculate total count BEFORE applying offset/limit
-    if mediaFilter == "all":
-        total_count = base_query.count()
-    elif mediaFilter == "videos":
-        total_count = base_query.filter(combined_query.c.type == "video").count()
-    elif mediaFilter == "raw":
-        total_count = base_query.filter(combined_query.c.type == "raw").count()
-    elif mediaFilter == "photos":
-        total_count = base_query.filter(combined_query.c.type == "image").count()
-    else:
-        total_count = 0
+    total_count = base_query.count()
     response.headers["X-Total-Count"] = str(total_count)
 
     # Sort by Date DESC and apply pagination
@@ -629,179 +470,47 @@ def get_album_timeline(
 
         output.append(item)
 
-    if mediaFilter == "all":
-        return [
-        {
-            "id": item["id"],
-            "filename": item["filename"],
-            "is_favorite": item["is_favorite"],
-            "type": item["type"],
-            "extension": item["extension"],
-            "thumbnail_url": item["thumbnail_url"],
-            "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
-            "image_url": item["image_url"] if item["type"] == "image" else None,
-            "video_url": item["video_url"] if item["type"] == "video" else None,
-            "raw_url": item["raw_url"] if item["type"] == "raw" else None,
-            "date": item["capture_date"],
-            "latitude": item["latitude"],
-            "longitude": item["longitude"],
-            "city": item["city"],
-            "state": item["state"],
-            "country": item["country"],
+    return [
+    {
+        "id": item["id"],
+        "filename": item["filename"],
+        "is_favorite": item["is_favorite"],
+        "type": item["type"],
+        "extension": item["extension"],
+        "thumbnail_url": item["thumbnail_url"],
+        "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
+        "image_url": item["image_url"] if item["type"] == "image" else None,
+        "video_url": item["video_url"] if item["type"] == "video" else None,
+        "raw_url": item["raw_url"] if item["type"] == "raw" else None,
+        "date": item["capture_date"],
+        "latitude": item["latitude"],
+        "longitude": item["longitude"],
+        "city": item["city"],
+        "state": item["state"],
+        "country": item["country"],
+        "width": item["width"],
+        "height": item["height"],
+        "duration": item["duration"],
+        "megapixels": item["megapixels"],
+        "metadata": {
+            "camera_make": item["camera_make"],
+            "camera_model": item["camera_model"],
+            "lens_make": item["lens_make"],
+            "lens_model": item["lens_model"],
+            "exposure_time": item["exposure_time"],
+            "f_number": item["f_number"],
+            "iso": item["iso"],
+            "focal_length": item["focal_length"],
+            "flash_fired": item["flash_fired"],
+            "size_bytes": item["file_size"],
+            "fps": item["fps"],
+            "codec": item["codec"],
             "width": item["width"],
             "height": item["height"],
-            "duration": item["duration"],
-            "megapixels": item["megapixels"],
-            "metadata": {
-                "camera_make": item["camera_make"],
-                "camera_model": item["camera_model"],
-                "lens_make": item["lens_make"],
-                "lens_model": item["lens_model"],
-                "exposure_time": item["exposure_time"],
-                "f_number": item["f_number"],
-                "iso": item["iso"],
-                "focal_length": item["focal_length"],
-                "flash_fired": item["flash_fired"],
-                "size_bytes": item["file_size"],
-                "fps": item["fps"],
-                "codec": item["codec"],
-                "width": item["width"],
-                "height": item["height"],
-            }
         }
-        for item in output
+    }
+    for item in output
     ]
-    elif mediaFilter == "videos":
-        return [
-        {
-            "id": item["id"],
-            "filename": item["filename"],
-            "is_favorite": item["is_favorite"],
-            "type": item["type"],
-            "extension": item["extension"],
-            "thumbnail_url": item["thumbnail_url"],
-            "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
-            "image_url": item["image_url"] if item["type"] == "image" else None,
-            "video_url": item["video_url"] if item["type"] == "video" else None,
-            "raw_url": item["raw_url"] if item["type"] == "raw" else None,
-            "date": item["capture_date"],
-            "latitude": item["latitude"],
-            "longitude": item["longitude"],
-            "city": item["city"],
-            "state": item["state"],
-            "country": item["country"],
-            "width": item["width"],
-            "height": item["height"],
-            "duration": item["duration"],
-            "megapixels": item["megapixels"],
-            "metadata": {
-                "camera_make": item["camera_make"],
-                "camera_model": item["camera_model"],
-                "lens_make": item["lens_make"],
-                "lens_model": item["lens_model"],
-                "exposure_time": item["exposure_time"],
-                "f_number": item["f_number"],
-                "iso": item["iso"],
-                "focal_length": item["focal_length"],
-                "flash_fired": item["flash_fired"],
-                "size_bytes": item["file_size"],
-                "fps": item["fps"],
-                "codec": item["codec"],
-                "width": item["width"],
-                "height": item["height"],
-            }
-        }
-        for item in output if item["type"] == "video"
-    ]
-
-    elif mediaFilter == "raw":
-        return [
-        {
-            "id": item["id"],
-            "filename": item["filename"],
-            "is_favorite": item["is_favorite"],
-            "type": item["type"],
-            "extension": item["extension"],
-            "thumbnail_url": item["thumbnail_url"],
-            "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
-            "image_url": item["image_url"] if item["type"] == "image" else None,
-            "video_url": item["video_url"] if item["type"] == "video" else None,
-            "raw_url": item["raw_url"] if item["type"] == "raw" else None,
-            "date": item["capture_date"],
-            "latitude": item["latitude"],
-            "longitude": item["longitude"],
-            "city": item["city"],
-            "state": item["state"],
-            "country": item["country"],
-            "width": item["width"],
-            "height": item["height"],
-            "duration": item["duration"],
-            "megapixels": item["megapixels"],
-            "metadata": {
-                "camera_make": item["camera_make"],
-                "camera_model": item["camera_model"],
-                "lens_make": item["lens_make"],
-                "lens_model": item["lens_model"],
-                "exposure_time": item["exposure_time"],
-                "f_number": item["f_number"],
-                "iso": item["iso"],
-                "focal_length": item["focal_length"],
-                "flash_fired": item["flash_fired"],
-                "size_bytes": item["file_size"],
-                "fps": item["fps"],
-                "codec": item["codec"],
-                "width": item["width"],
-                "height": item["height"],
-            }
-        }
-        for item in output if item["type"] == "raw"
-    ]
-    elif mediaFilter == "photos":
-        return [
-        {
-            "id": item["id"],
-            "filename": item["filename"],
-            "is_favorite": item["is_favorite"],
-            "type": item["type"],
-            "extension": item["extension"],
-            "thumbnail_url": item["thumbnail_url"],
-            "preview_url": item["preview_url"] if item["type"] == "raw" or item["type"] == "video" else None,
-            "image_url": item["image_url"] if item["type"] == "image" else None,
-            "video_url": item["video_url"] if item["type"] == "video" else None,
-            "raw_url": item["raw_url"] if item["type"] == "raw" else None,
-            "date": item["capture_date"],
-            "latitude": item["latitude"],
-            "longitude": item["longitude"],
-            "city": item["city"],
-            "state": item["state"],
-            "country": item["country"],
-            "width": item["width"],
-            "height": item["height"],
-            "duration": item["duration"],
-            "megapixels": item["megapixels"],
-            "metadata": {
-                "camera_make": item["camera_make"],
-                "camera_model": item["camera_model"],
-                "lens_make": item["lens_make"],
-                "lens_model": item["lens_model"],
-                "exposure_time": item["exposure_time"],
-                "f_number": item["f_number"],
-                "iso": item["iso"],
-                "focal_length": item["focal_length"],
-                "flash_fired": item["flash_fired"],
-                "size_bytes": item["file_size"],
-                "fps": item["fps"],
-                "codec": item["codec"],
-                "width": item["width"],
-                "height": item["height"],
-            }
-        }
-        for item in output if item["type"] == "image"
-    ]
-    else:
-        return []
-
-    
 
 @router.get("/getPartOfAlbums/{fileType}/{id}", response_model=dict)
 def get_part_of_albums(fileType: str, id: int, db: Session = Depends(get_db)):
@@ -809,7 +518,7 @@ def get_part_of_albums(fileType: str, id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="File type is required")
     if not id:
         raise HTTPException(status_code=400, detail="File ID is required")
-    if fileType not in ["image", "video", "raw"]:
+    if fileType not in FILE_TYPES:
         raise HTTPException(status_code=400, detail="Invalid file type")
     try:
         if fileType == "image":
@@ -972,49 +681,6 @@ def get_download_task_status(task_id: str):
         print(f"❌ Error getting download task status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/download_file/{task_id}")
-def download_album_file(task_id: str):
-    """
-    Returns the zip file from downloads folder. File is NOT deleted after download.
-    """
-    try:
-        # Get task info from Redis
-        task_data = redis_client.hgetall(f"download_task:{task_id}")
-        
-        if not task_data:
-            raise HTTPException(status_code=404, detail="Download not found")
-        
-        # Decode task data
-        status = task_data.get(b"status", b"").decode('utf-8')
-        zip_path = task_data.get(b"zip_path", b"").decode('utf-8')
-        zip_filename = task_data.get(b"zip_filename", b"").decode('utf-8')
-        
-        if status != "completed":
-            raise HTTPException(status_code=400, detail="Download not ready")
-        
-        if not zip_path or not os.path.exists(zip_path):
-            raise HTTPException(status_code=404, detail="Zip file not found")
-        
-        # Return file for download - file stays in downloads folder
-        from fastapi.responses import FileResponse
-        
-        response = FileResponse(
-            zip_path,
-            media_type='application/zip',
-            filename=zip_filename,
-            headers={
-                "Content-Disposition": f"attachment; filename=\"{zip_filename}\""
-            },
-        )
-        
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error downloading file: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.delete("/cleanup_download/{task_id}")
 def cleanup_download(task_id: str):
     """
@@ -1049,7 +715,6 @@ def cancel_download(task_id: str):
     Cancel an active download task and clean up resources.
     """
     try:
-        from celery.result import AsyncResult
         from app.core.celery_app import celery_app
         
         # First, update Redis status to cancelled (task will check this)
