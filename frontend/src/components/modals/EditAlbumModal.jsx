@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { api } from "../api";
+import { api } from "../../api";
 
 export default function EditAlbumModal({ isOpen, onClose, onSuccess, albumId }) {
   const [albumName, setAlbumName] = useState("");

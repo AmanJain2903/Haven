@@ -25,8 +25,8 @@ import {
   DownloadCloud,
   Layers,
 } from 'lucide-react';
-import { api } from '../api';
-import {formatFileSize, getEstimatedPreparationTime} from '../utils/fileUtils';
+import { api } from '../../api';
+import {formatFileSize, getEstimatedPreparationTime} from '../../utils/fileUtils';
 
 
 // Collapsible Section Component (moved outside to prevent re-creation)

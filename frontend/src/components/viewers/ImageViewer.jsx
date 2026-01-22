@@ -1,60 +1,50 @@
-import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, Play, Pause, Volume2, VolumeX, Maximize, Camera, Timer, FileCode, HardDrive, Clock, MoreVertical, Edit, FolderPlus } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Calendar, MapPin, Info, ZoomIn, ZoomOut, HardDrive, Maximize, Camera, Aperture, Layers, Clock, MoreVertical, Play, Pause, Edit, RotateCcw, RotateCw, FolderPlus } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '../contexts/ThemeContext';
-import { api } from '../api';
-import { formatFileSize } from '../utils/fileUtils';
-import FavoriteButton from './FavoriteButton';
-import ShareButton from './ShareButton';
-import DownloadButton from './DownloadButton';
-import DeleteButton from './DeleteButton';
-import EditLocationModal from './EditLocationModal';
+import { useTheme } from '../../contexts/ThemeContext';
+import { api } from '../../api'; // Import your API helper
+import { formatFileSize } from '../../utils/fileUtils';
+import FavoriteButton from '../buttons/FavoriteButton';
+import ShareButton from '../buttons/ShareButton';
+import DownloadButton from '../buttons/DownloadButton';
+import DeleteButton from '../buttons/DeleteButton';
+import EditLocationModal from '../modals/EditLocationModal';
 
-const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos, onFavoriteToggle, onLocationUpdate, isAddToAlbumModalOpen, setIsAddToAlbumModalOpen, onDelete, isSlideshowActive = false, isSlideshowPaused = false, pauseSlideshow, endSlideshow }) => {
+const ImageViewer = ({ photo, onClose, onNext, onPrev, currentIndex, totalPhotos, onFavoriteToggle, onLocationUpdate, isAddToAlbumModalOpen, setIsAddToAlbumModalOpen, onDelete, isSlideshowActive = false, isSlideshowPaused = false, pauseSlideshow, endSlideshow }) => {
   const { isDark } = useTheme();
   
-  const [activeVideo, setActiveVideo] = useState(video);
+  // --- NEW STATE: Active Photo Data ---
+  // We initialize this with the prop 'photo' so the UI renders immediately.
+  const [activePhoto, setActivePhoto] = useState(photo);
+
   const [direction, setDirection] = useState(0);
   const [prevIndex, setPrevIndex] = useState(currentIndex);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [shouldLoadMedia, setShouldLoadMedia] = useState(false);
+  const [rotation, setRotation] = useState(0);
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [isEditLocationModalOpen, setIsEditLocationModalOpen] = useState(false);
   
-  // Video-specific states
-  const videoRef = useRef(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-
-  // Dragging state
-  const [isDragging, setIsDragging] = useState(false);
-  const [isSeeking, setIsSeeking] = useState(false);
-  const lastSeekTime = useRef(0);
-  
-  // Hover states for auto-hiding controls
-  const [isHoveringVideo, setIsHoveringVideo] = useState(false);
-  const [isHoveringControls, setIsHoveringControls] = useState(false);
-  
-  // Debounced media loading
-  const [shouldLoadMedia, setShouldLoadMedia] = useState(false);
-  
-  // Determine if bottom controls should be visible
-  // Show if: paused OR (playing AND hovering video/controls)
-  // Hide if: metadata overlay or more options dropdown is open
-  const shouldShowControls = (!isPlaying || isHoveringVideo || isHoveringControls) && !showMetadata && !showMoreOptions;
+  // Refs for cancelling in-flight image loads
+  const thumbnailRef = useRef(null);
+  const fullImageRef = useRef(null);
   
   // --- DEBOUNCE MEDIA LOADING TO PREVENT QUEUE BUILDUP ---
   useEffect(() => {
-    if (!video) return;
+    if (!photo) return;
 
-    // Cancel any in-flight video loads
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.src = '';
-      videoRef.current.load(); // Reset the video element
+    // Cancel any in-flight image loads by clearing the src
+    if (thumbnailRef.current) {
+      thumbnailRef.current.src = '';
+    }
+    if (fullImageRef.current) {
+      fullImageRef.current.src = '';
     }
 
     // Reset media loading state immediately on navigation
@@ -67,39 +57,49 @@ const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos
 
     return () => {
       clearTimeout(mediaLoadTimer);
-      // Final cleanup: cancel any pending video loads
-      if (videoRef.current) {
-        videoRef.current.pause();
-        videoRef.current.src = '';
+      // Final cleanup: cancel any pending image loads
+      if (thumbnailRef.current) {
+        thumbnailRef.current.src = '';
+      }
+      if (fullImageRef.current) {
+        fullImageRef.current.src = '';
       }
     };
-  }, [video]);
-
-  // Fetch details logic
+  }, [photo]);
+  
+  // --- FETCH DETAILS LOGIC ---
   useEffect(() => {
-    if (!video) return;
-    setActiveVideo(video);
+    if (!photo) return;
+
+    // 1. Reset to the basic prop data immediately when the index changes.
+    // This ensures the transition is instant and we don't show the previous photo's details.
+    setActivePhoto(photo);
 
     let isMounted = true;
 
     const fetchDetailedData = async () => {
       try {
-        const details = await api.getVideoDetails(video.id);
-        if (isMounted && details && String(details.id) === String(video.id)) {
-          setActiveVideo(details);
+        // 2. Call the API
+        const details = await api.getImageDetails(photo.id);
+        
+        // 3. Update state only if the component is still mounted and looking at the same photo
+        if (isMounted && details && details.id === photo.id) {
+          setActivePhoto(details);
         }
       } catch (error) {
-        console.error("Failed to fetch detailed video data, using fallback.", error);
+        console.error("Failed to fetch detailed image data, using fallback.", error);
+        // We do nothing here, because activePhoto is already set to the 'photo' prop (fallback)
       }
     };
 
     fetchDetailedData();
+
     return () => { isMounted = false; };
-  }, [video]);
+  }, [photo]); // Run whenever the input photo object changes
 
-  if (!activeVideo) return null;
+  if (!activePhoto) return null;
 
-  const hasNext = currentIndex < totalVideos - 1;
+  const hasNext = currentIndex < totalPhotos - 1;
   const hasPrev = currentIndex > 0;
 
   // Update direction based on index change
@@ -107,135 +107,113 @@ const VideoViewer = ({ video, onClose, onNext, onPrev, currentIndex, totalVideos
     if (currentIndex !== prevIndex) {
       setDirection(currentIndex > prevIndex ? 1 : -1);
       setPrevIndex(currentIndex);
-      setIsPlaying(false); // Pause when changing videos
-      setCurrentTime(0);
-      lastSeekTime.current = 0;
+      setImageLoaded(false); // Reset when changing photos
+      setScale(1); // Reset zoom
+      setPosition({ x: 0, y: 0 }); // Reset position
+      setRotation(0); // Reset rotation
     }
   }, [currentIndex, prevIndex]);
 
   const handleNext = () => {
     if (hasNext) {
-      setDuration(0);
       onNext();
     }
   };
 
   const handlePrev = () => {
     if (hasPrev) {
-      setDuration(0);
       onPrev();
     }
   };
 
-  // Video controls
-  const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
+  const handleRotateLeft = () => {
+    setRotation(prev => prev - 90);
+  };
+
+  const handleRotateRight = () => {
+    setRotation(prev => prev + 90);
+  };
+
+  // Normalize rotation to 0-359 range to check if image is in original orientation
+  const getNormalizedRotation = () => {
+    return ((rotation % 360) + 360) % 360;
+  };
+
+  // Zoom functions
+  const handleZoomIn = () => {
+    setScale(prev => Math.min(prev + 0.5, 5));
+  };
+
+  const handleZoomOut = () => {
+    const newScale = Math.max(scale - 0.5, 1);
+    setScale(newScale);
+    if (newScale === 1) {
+      setPosition({ x: 0, y: 0 }); // Auto-center when fully zoomed out
+    }
+  };
+
+  const handleResetZoom = () => {
+    setScale(1);
+    setPosition({ x: 0, y: 0 });
+    // Only reset rotation if image is not already in original orientation
+    if (getNormalizedRotation() !== 0) {
+      setRotation(0);
+    }
+  };
+
+  // Mouse wheel zoom
+  const handleWheel = (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const newScale = Math.max(1, Math.min(5, scale + delta));
+      setScale(newScale);
+      if (newScale === 1) {
+        setPosition({ x: 0, y: 0 }); // Auto-center when fully zoomed out
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
-  const toggleMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
+  // Dragging for panning when zoomed
+  const handleMouseDown = (e) => {
+    if (scale > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
     }
   };
 
-  const handleVolumeChange = (e) => {
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-    if (videoRef.current) {
-      videoRef.current.volume = newVolume;
+  const handleMouseMove = (e) => {
+    if (isDragging && scale > 1) {
+      setPosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
     }
   };
 
-  const handleTimeUpdate = () => {
-    // 1. If dragging, we strictly rely on the slider input, ignore video.
-    if (isDragging) return;
-
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
+  const handleMouseUp = () => {
+    setIsDragging(false);
   };
 
-  const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
-    }
+  // Double click to reset zoom
+  const handleDoubleClick = () => {
+    handleResetZoom();
   };
 
-  // Called repeatedly while dragging
-  const handleSeekChange = (e) => {
-    const newTime = parseFloat(e.target.value);
-    
-    // 1. Update the UI instantly so it feels responsive
-    setCurrentTime(newTime);
-    
-    // 2. Force the "ignore" buffer to stay active
-    lastSeekTime.current = Date.now(); 
-    
-    // 3. Scrub the video engine (optional: wrap in throttle if performance is bad)
-    if (videoRef.current) {
-        // Check if finite to prevent crashes
-        if (Number.isFinite(newTime)) {
-            videoRef.current.currentTime = newTime;
-        }
-    }
-};
-
-const handleSeekStart = () => {
-  setIsDragging(true);
-  // Pause video while scrubbing for smoother experience (optional but recommended)
-  // if (videoRef.current && !videoRef.current.paused) videoRef.current.pause(); 
-};
-
-const handleSeekEnd = () => {
-  setIsDragging(false);
-  // Refresh the buffer timestamp one last time
-  lastSeekTime.current = Date.now();
-  
-  // If you paused on start, you could resume here:
-  // if (isPlaying && videoRef.current) videoRef.current.play();
-};
-
-  // 4. Video Engine Event: "I am trying to find that frame"
-  const handleVideoSeeking = () => {
-    setIsSeeking(true);
-  };
-
-  // 5. Video Engine Event: "I found the frame"
-  const handleVideoSeeked = () => {
-    setIsSeeking(false);
-  };
-
-  const formatTime = (seconds) => {
-    if (isNaN(seconds)) return "0:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Handle Keyboard Navigation
+  // Handle Keyboard Navigation (Esc, Left, Right)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowRight') handleNext();
       if (e.key === 'ArrowLeft') handlePrev();
-      if (e.key === ' ') {
-        e.preventDefault();
-        togglePlay();
-      }
     };
     window.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup listener when component closes
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, currentIndex, hasNext, hasPrev, isPlaying]);
+  }, [onClose, currentIndex, hasNext, hasPrev]);
 
-  // Prevent scrolling the background page
+  // Prevent scrolling the background page while viewer is open
   useEffect(() => {
     // Prevent scrolling on both body and html
     const originalBodyOverflow = document.body.style.overflow;
@@ -261,34 +239,13 @@ const handleSeekEnd = () => {
     }
   }, [showComingSoon]);
 
-  // Slideshow: Auto-play video when active
+  // Slideshow auto-advance for images
   useEffect(() => {
-    if (isSlideshowActive && !isSlideshowPaused && videoRef.current && shouldLoadMedia) {
-      videoRef.current.play().catch(err => console.log("Auto-play failed:", err));
-      setIsPlaying(true);
-    }
-  }, [isSlideshowActive, isSlideshowPaused, shouldLoadMedia]);
+    if (!isSlideshowActive || isSlideshowPaused || !imageLoaded) return;
 
-  // Slideshow: Handle pause state
-  useEffect(() => {
-    if (isSlideshowActive && videoRef.current) {
-      if (isSlideshowPaused && isPlaying) {
-        videoRef.current.pause();
-        setIsPlaying(false);
-      } else if (!isSlideshowPaused && !isPlaying) {
-        videoRef.current.play().catch(err => console.log("Resume play failed:", err));
-        setIsPlaying(true);
-      }
-    }
-  }, [isSlideshowPaused, isSlideshowActive]);
-
-  // Slideshow: Handle video end - advance to next or end slideshow
-  const handleVideoEnded = () => {
-    setIsPlaying(false);
-    
-    if (isSlideshowActive && !isSlideshowPaused) {
-      if (currentIndex < totalVideos - 1) {
-        // Move to next media
+    const timer = setTimeout(() => {
+      if (currentIndex < totalPhotos - 1) {
+        // Move to next image
         handleNext();
       } else {
         // End of slideshow
@@ -296,8 +253,10 @@ const handleSeekEnd = () => {
           endSlideshow();
         }
       }
-    }
-  };
+    }, 4000); // 4 seconds per image
+
+    return () => clearTimeout(timer);
+  }, [isSlideshowActive, isSlideshowPaused, imageLoaded, currentIndex, totalPhotos]);
 
   return (
     <motion.div 
@@ -313,7 +272,7 @@ const handleSeekEnd = () => {
       {/* Content Container */}
       <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-8">
           
-          {/* Close Button */}
+          {/* --- Close Button --- */}
           <button 
             onClick={onClose}
             className="absolute top-6 right-6 p-3 glass-panel rounded-full 
@@ -327,7 +286,7 @@ const handleSeekEnd = () => {
             <X className="w-6 h-6" />
           </button>
 
-          {/* Video Counter */}
+          {/* --- Photo Counter --- */}
           <div className="absolute top-6 left-1/2 -translate-x-1/2 
                          glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
                          rounded-full px-6 py-2 
@@ -336,10 +295,10 @@ const handleSeekEnd = () => {
                          shadow-lg backdrop-blur-xl z-50">
             <span className="text-purple-600 dark:text-cyan-400">{currentIndex + 1}</span>
             <span className="mx-1.5 text-slate-400 dark:text-white/40">/</span>
-            <span>{totalVideos}</span>
+            <span>{totalPhotos}</span>
           </div>
 
-          {/* Navigation Arrows */}
+          {/* --- Navigation Arrows --- */}
           <button 
             onClick={handlePrev}
             disabled={!hasPrev}
@@ -370,153 +329,70 @@ const handleSeekEnd = () => {
             <ChevronRight className="w-8 h-8" />
           </button>
 
-          {/* Main Video */}
-          <div className="flex h-full w-full max-w-7xl items-center justify-center p-4 md:p-12 overflow-hidden">
-            <div className="relative glass-panel rounded-3xl p-4 border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl overflow-hidden">
+          {/* --- Main Image --- */}
+          <div 
+            className="flex h-full w-full max-w-7xl items-center justify-center p-4 md:p-12 overflow-hidden"
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onDoubleClick={handleDoubleClick}
+            style={{ cursor: scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+          >
+            <motion.div 
+              className="relative glass-panel rounded-3xl p-4 border-2 border-purple-400/30 dark:border-cyan-400/30 shadow-2xl overflow-hidden"
+              animate={{ rotate: rotation }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            >
               
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div 
-                  key={String(activeVideo.id)}
+                  key={activePhoto.id} 
                   className="relative flex items-center justify-center"
-                  onMouseEnter={() => setIsHoveringVideo(true)}
-                  onMouseLeave={() => setIsHoveringVideo(false)}
+                  animate={{ 
+                    scale: scale,
+                    x: position.x,
+                    y: position.y
+                  }}
+                  willChange="transform"
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 >
-                  <video
-                    ref={videoRef}
-                    src={shouldLoadMedia ? api.getVideoUrl(activeVideo.id) : undefined}
-                    className="max-h-[80vh] max-w-full rounded-2xl shadow-2xl"
-                    onTimeUpdate={handleTimeUpdate}
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onEnded={handleVideoEnded}
-                    onSeeking={handleVideoSeeking}
-                    onSeeked={handleVideoSeeked}
-                    poster={api.getVideoThumbnailUrl(activeVideo.id)}
+                  {/* Thumbnail - shown immediately, constrained */}
+                  {!imageLoaded && (
+                    <motion.img 
+                      ref={thumbnailRef}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      style={{willChange: 'opacity'}}
+                      transition={{ duration: 0.2 }}
+                      src={activePhoto.thumbnail_url} 
+                      alt={activePhoto.filename}
+                      className="max-h-[70vh] max-w-full object-contain rounded-2xl shadow-2xl blur-sm"
+                    />
+                  )}
+                  
+                  {/* Full image - loads in background, can be larger */}
+                  {shouldLoadMedia && (
+                  <motion.img 
+                      ref={fullImageRef}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: imageLoaded ? 1 : 0 }}
+                    transition={{ duration: 0.3 }}
+                    src={activePhoto.image_url} 
+                    alt={activePhoto.filename}
+                    onLoad={() => setImageLoaded(true)}
+                    className="max-h-[80vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
+                    style={{ display: imageLoaded ? 'block' : 'none', willChange: 'opacity, transform' }}
+                    draggable={false}
                   />
-                   
-                  {/* Play/Pause Overlay (centered) - Show when paused OR hovering while playing */}
-                  <AnimatePresence>
-                    {shouldShowControls && (
-                      <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        style={{ willChange: "opacity" }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute inset-0 flex items-center justify-center cursor-pointer"
-                        onClick={togglePlay}
-                      >
-                        <motion.div
-                          initial={{ scale: 0.8 }}
-                          animate={{ scale: 1 }}
-                          className="w-20 h-20 rounded-full bg-black/60 backdrop-blur-sm 
-                                   flex items-center justify-center border-2 border-white/30
-                                   shadow-2xl hover:scale-110 transition-all duration-200"
-                        >
-                          {isPlaying ? (
-                            <Pause className="w-10 h-10 text-white" fill="white" />
-                          ) : (
-                            <Play className="w-10 h-10 text-white ml-1" fill="white" />
-                          )}
-                        </motion.div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  )}
                 </motion.div>
               </AnimatePresence>
-
-              {/* Video Controls (inside video container, at bottom) */}
-              <AnimatePresence>
-                {shouldShowControls && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    style={{ willChange: "opacity, transform" }}
-                    exit={{ opacity: 0, y: 20 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute bottom-5 left-0 right-0 p-4"
-                    onMouseEnter={() => setIsHoveringControls(true)}
-                    onMouseLeave={() => setIsHoveringControls(false)}
-                  >
-                    <div className="glass-panel rounded-2xl p-4 border border-purple-400/20 dark:border-cyan-400/20">
-                  {/* Progress Bar */}
-                  <div className="mb-3">
-                    <input
-                      type="range"
-                      onMouseDown={handleSeekStart}
-                      onMouseUp={handleSeekEnd}
-                      onTouchStart={handleSeekStart}
-                      onTouchEnd={handleSeekEnd}
-                      min="0"
-                      max={duration || 0}
-                      value={currentTime}
-                      onChange={handleSeekChange}
-                      className="w-full h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-purple-600 dark:accent-cyan-400"
-                    />
-                    <div className="flex justify-between text-xs text-slate-600 dark:text-white/60 mt-1">
-                      <span>{formatTime(currentTime)}</span>
-                      <span>{formatTime(duration)}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Control Buttons */}
-                  <div className="flex items-center gap-4">
-                    {/* Play/Pause */}
-                    <button
-                      onClick={togglePlay}
-                      className="p-2 rounded-full bg-purple-500/20 dark:bg-cyan-500/20 
-                               hover:bg-purple-500/30 dark:hover:bg-cyan-500/30
-                               transition-all duration-200"
-                    >
-                      {isPlaying ? (
-                        <Pause className="w-5 h-5 text-purple-600 dark:text-cyan-400" />
-                      ) : (
-                        <Play className="w-5 h-5 text-purple-600 dark:text-cyan-400" fill="currentColor" />
-                      )}
-                    </button>
-
-                    {/* Volume Control */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={toggleMute}
-                        className="p-2 rounded-full hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
-                                 transition-all duration-200"
-                      >
-                        {isMuted ? (
-                          <VolumeX className="w-5 h-5 text-slate-700 dark:text-white/70" />
-                        ) : (
-                          <Volume2 className="w-5 h-5 text-slate-700 dark:text-white/70" />
-                        )}
-                      </button>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={volume}
-                        onChange={handleVolumeChange}
-                        className="w-20 h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-purple-600 dark:accent-cyan-400"
-                      />
-                    </div>
-
-                    <div className="flex-1" />
-
-                    {/* Fullscreen Button */}
-                    <button
-                      onClick={() => videoRef.current?.requestFullscreen()}
-                      className="p-2 rounded-full hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
-                               transition-all duration-200"
-                    >
-                      <Maximize className="w-5 h-5 text-slate-700 dark:text-white/70" />
-                    </button>
-                  </div>
-                </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            </motion.div>
           </div>
 
-          {/* Metadata Overlay (Bottom) */}
+          {/* --- Metadata Overlay (Bottom) --- */}
           <AnimatePresence mode="wait">
             {showMetadata && (
               <motion.div 
@@ -547,12 +423,12 @@ const handleSeekEnd = () => {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Filename</span>
-                      <span className="font-medium truncate max-w-[180px]">{activeVideo.filename}</span>
+                      <span className="font-medium truncate max-w-[180px]">{activePhoto.filename}</span>
                     </div>
                   </div>
 
                   {/* File Size */}
-                  {activeVideo.metadata?.size_bytes && (
+                  {activePhoto.metadata?.size_bytes && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-purple-500/10 dark:bg-violet-500/10">
                         <HardDrive className="w-4 h-4 text-purple-600 dark:text-violet-400" />
@@ -560,63 +436,72 @@ const handleSeekEnd = () => {
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">File Size</span>
                         <span className="font-medium">
-                          {formatFileSize(activeVideo.metadata.size_bytes)}
+                          {formatFileSize(activePhoto.metadata.size_bytes)}
                         </span>
                       </div>
                     </div>
                   )}
 
                   {/* Dimensions */}
-                  {activeVideo.metadata?.width && activeVideo.metadata?.height && (
+                  {activePhoto.width && activePhoto.height && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-blue-500/10 dark:bg-sky-500/10">
-                      <Maximize className="w-4 h-4 text-blue-600 dark:text-sky-400" />
+                        <Maximize className="w-4 h-4 text-blue-600 dark:text-sky-400" />
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-xs opacity-70">Resolution</span>
-                        <span className="font-medium">{activeVideo.metadata.width}px × {activeVideo.metadata.height}px</span>
+                        <span className="text-xs opacity-70">Dimensions</span>
+                        <span className="font-medium">{activePhoto.width}px × {activePhoto.height}px</span>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Column 2: Video Details */}
+                {/* Column 2: Camera Details */}
                 <div className="flex flex-col gap-3">
                   {/* Camera Make & Model */}
-                  {activeVideo.metadata?.camera_make || activeVideo.metadata?.camera_model && (
+                  {(activePhoto.metadata?.camera_make || activePhoto.metadata?.camera_model) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-amber-500/10 dark:bg-yellow-500/10">
                         <Camera className="w-4 h-4 text-amber-600 dark:text-yellow-400" />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Camera</span>
-                        <span className="font-medium">{activeVideo.metadata.camera_make} {activeVideo.metadata.camera_model}</span>
+                        <span className="font-medium">
+                          {[activePhoto.metadata.camera_make, activePhoto.metadata.camera_model].filter(Boolean).join(' ')}
+                        </span>
                       </div>
                     </div>
                   )}
 
-                  {/* FPS */}
-                  {activeVideo.metadata?.fps && (
+                  {/* Exposure Settings */}
+                  {(activePhoto.metadata?.exposure_time || activePhoto.metadata?.iso || activePhoto.metadata?.f_number || activePhoto.metadata?.focal_length) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-emerald-500/10 dark:bg-green-500/10">
-                        <Timer className="w-4 h-4 text-emerald-600 dark:text-green-400" />
+                        <Aperture className="w-4 h-4 text-emerald-600 dark:text-green-400" />
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-xs opacity-70">FPS</span>
-                        <span className="font-medium">{Math.round(activeVideo.metadata.fps)} fps</span>
+                        <span className="text-xs opacity-70">Settings</span>
+                        <span className="font-medium">
+                          {[
+                            activePhoto.metadata.exposure_time && `${activePhoto.metadata.exposure_time}`,
+                            activePhoto.metadata.f_number && `f/${activePhoto.metadata.f_number}`,
+                            activePhoto.metadata.iso && `ISO ${activePhoto.metadata.iso}`,
+                            activePhoto.metadata.focal_length && `${activePhoto.metadata.focal_length}mm`
+                          ].filter(Boolean).join(' • ')}
+                        </span>
                       </div>
                     </div>
                   )}
 
-                  {/* Codec */}
-                  {activeVideo.metadata?.codec && (
+                  {/* Megapixels */}
+                  {activePhoto.megapixels && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-pink-500/10 dark:bg-rose-500/10">
-                        <FileCode className="w-4 h-4 text-pink-600 dark:text-rose-400" />
+                        <Layers className="w-4 h-4 text-pink-600 dark:text-rose-400" />
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-xs opacity-70">Codec</span>
-                        <span className="font-medium">{activeVideo.metadata.codec}</span>
+                        <span className="text-xs opacity-70">Megapixels</span>
+                        <span className="font-medium">{activePhoto.megapixels.toFixed(1)} MP</span>
                       </div>
                     </div>
                   )}
@@ -625,7 +510,7 @@ const handleSeekEnd = () => {
                 {/* Column 3: Location & Date */}
                 <div className="flex flex-col gap-3">
                   {/* Location */}
-                  {(activeVideo.city || activeVideo.state || activeVideo.country) && (
+                  {(activePhoto.city || activePhoto.state || activePhoto.country) && (
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-green-500/10 dark:bg-teal-500/10">
                         <MapPin className="w-4 h-4 text-green-600 dark:text-teal-400" />
@@ -633,7 +518,7 @@ const handleSeekEnd = () => {
                       <div className="flex flex-col">
                         <span className="text-xs opacity-70">Location</span>
                         <span className="font-medium">
-                          {[activeVideo.city, activeVideo.state, activeVideo.country].filter(Boolean).join(', ')}
+                          {[activePhoto.city, activePhoto.state, activePhoto.country].filter(Boolean).join(', ')}
                         </span>
                       </div>
                     </div>
@@ -646,7 +531,7 @@ const handleSeekEnd = () => {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Capture Date</span>
-                      <span className="font-medium">{new Date(activeVideo.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                      <span className="font-medium">{new Date(activePhoto.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     </div>
                   </div>
 
@@ -658,24 +543,56 @@ const handleSeekEnd = () => {
                     <div className="flex flex-col">
                       <span className="text-xs opacity-70">Capture Time (UTC)</span>
                       <span className="font-medium">
-                        {new Date(activeVideo.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {new Date(activePhoto.date).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true })}
                       </span>
-                    </div>
-                  </div>
-                </div>
+              </div>
+            </div>
+          </div>
               </div>
             </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Action Buttons (Bottom) */}
+          {/* --- Action Buttons (Bottom) --- */}
           <div className="absolute bottom-8 left-0 right-0 flex justify-center items-end z-50">
-            <div className="glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
-                           rounded-full px-6 py-3 
-                           flex items-center gap-3 
-                           shadow-2xl backdrop-blur-xl">
-              
-              {/* Info Button */}
+            {/* Zoom Out Button - Left Outside */}
+            <button
+              onClick={handleZoomOut}
+              disabled={scale <= 1}
+              className={`p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
+                       shadow-lg transition-all duration-200 mr-4
+                       ${scale <= 1 
+                         ? 'opacity-50 cursor-not-allowed text-slate-400 dark:text-white/30' 
+                         : 'text-slate-700 dark:text-white/80 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 hover:border-purple-400/50 dark:hover:border-cyan-400/50 hover:scale-110'
+                       }`}
+            >
+              <ZoomOut className="w-5 h-5" />
+            </button>
+
+            {/* Center Column */}
+            <div className="flex flex-col items-center gap-3">
+              {/* Reset Button - Above Toolbar */}
+              {(scale > 1 || getNormalizedRotation() !== 0) && (
+                <button
+                  onClick={handleResetZoom}
+                  className="p-2 px-4 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
+                           text-slate-700 dark:text-white/80 
+                           hover:bg-purple-500/20 dark:hover:bg-cyan-500/20
+                           hover:border-purple-400/50 dark:hover:border-cyan-400/50
+                           hover:scale-110
+                           shadow-lg transition-all duration-200"
+                >
+                  <span className="text-xs font-bold">Reset View</span>
+                </button>
+              )}
+
+              {/* Main Toolbar */}
+              <div className="glass-panel border-2 border-purple-400/30 dark:border-cyan-400/30 
+                             rounded-full px-6 py-3 
+                             flex items-center gap-3 
+                             shadow-2xl backdrop-blur-xl">
+                
+                {/* Info Button */}
               <button
                 onClick={() => setShowMetadata(!showMetadata)}
                 className={`p-2.5 rounded-full transition-all duration-200
@@ -726,32 +643,32 @@ const handleSeekEnd = () => {
 
               {/* Heart Button */}
               <FavoriteButton 
-                id={activeVideo.id}
-                type="video"
-                initialFavorite={activeVideo.is_favorite}
+                id={activePhoto.id}
+                type="image"
+                initialFavorite={activePhoto.is_favorite}
                 size="large"
                 onToggle={onFavoriteToggle}
               />
 
               {/* Share Button */}
               <ShareButton 
-                id={activeVideo.id}
-                type="video"
+                id={activePhoto.id}
+                type="image"
                 size="large"
               />
 
               {/* Download Button */}
               <DownloadButton 
-                id={activeVideo.id}
-                type="video"
+                id={activePhoto.id}
+                type="image"
                 size="large"
               />
 
               {/* Delete Button */}
               <DeleteButton 
-                key={`delete-${activeVideo.id}`}
-                id={activeVideo.id}
-                type="video"
+                key={`delete-${activePhoto.id}`}
+                id={activePhoto.id}
+                type="image"
                 size="large"
                 onSuccess={(deletedId, deletedType) => {
                   // First, update global state (remove from arrays, update counts)
@@ -760,7 +677,7 @@ const handleSeekEnd = () => {
                   }
                   
                   // Then navigate to next file or close viewer
-                  if (currentIndex < totalVideos - 1) {
+                  if (currentIndex < totalPhotos - 1) {
                     // Move to next file
                     onNext();
                   } else if (currentIndex > 0) {
@@ -814,6 +731,32 @@ const handleSeekEnd = () => {
 
                         <div className="h-px bg-purple-400/20 dark:bg-cyan-400/20 my-1 mx-2" />
 
+                        {/* Rotate Left */}
+                        <button
+                          onClick={() => {
+                            handleRotateLeft();
+                          }}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
+                                   text-slate-700 dark:text-white/80 transition-all duration-200"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          <span className="text-sm font-medium">Rotate Left</span>
+                        </button>
+
+                        {/* Rotate Right */}
+                        <button
+                          onClick={() => {
+                            handleRotateRight();
+                          }}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 
+                                   text-slate-700 dark:text-white/80 transition-all duration-200"
+                        >
+                          <RotateCw className="w-4 h-4" />
+                          <span className="text-sm font-medium">Rotate Right</span>
+                        </button>
+
+                        <div className="h-px bg-purple-400/20 dark:bg-cyan-400/20 my-1 mx-2" />
+
                         {/* Add to Album */}
                         <button
                           onClick={() => {
@@ -844,7 +787,22 @@ const handleSeekEnd = () => {
                   )}
                 </AnimatePresence>
               </div>
+              </div>
             </div>
+
+            {/* Zoom In Button - Right Outside */}
+            <button
+              onClick={handleZoomIn}
+              disabled={scale >= 5}
+              className={`p-3 glass-panel rounded-full border border-purple-400/30 dark:border-cyan-400/30
+                       shadow-lg transition-all duration-200 ml-4
+                       ${scale >= 5 
+                         ? 'opacity-50 cursor-not-allowed text-slate-400 dark:text-white/30' 
+                         : 'text-slate-700 dark:text-white/80 hover:bg-purple-500/20 dark:hover:bg-cyan-500/20 hover:border-purple-400/50 dark:hover:border-cyan-400/50 hover:scale-110'
+                       }`}
+            >
+              <ZoomIn className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Coming Soon Overlay */}
@@ -874,8 +832,8 @@ const handleSeekEnd = () => {
         <EditLocationModal
           isOpen={isEditLocationModalOpen}
           onClose={() => setIsEditLocationModalOpen(false)}
-          fileType="video"
-          fileId={activeVideo.id}
+          fileType="image"
+          fileId={activePhoto.id}
           onSuccess={() => {
             // Notify parent grid to refresh
             if (onLocationUpdate) {
@@ -883,10 +841,8 @@ const handleSeekEnd = () => {
             }
           }}
         />
-
       </motion.div>
   );
 };
 
-export default VideoViewer;
-
+export default ImageViewer;

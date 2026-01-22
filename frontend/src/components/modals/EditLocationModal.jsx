@@ -1,8 +1,8 @@
 import { X, MapPin, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '../contexts/ThemeContext';
-import { api } from '../api';
+import { useTheme } from '../../contexts/ThemeContext';
+import { api } from '../../api';
 
 const EditLocationModal = ({ isOpen, onClose, fileType, fileId, onSuccess }) => {
   const { isDark } = useTheme();

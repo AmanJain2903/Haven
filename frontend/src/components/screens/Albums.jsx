@@ -1,12 +1,12 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { Plus, Image as ImageIcon, Download, Trash2, Edit, ArrowLeft, XCircle } from "lucide-react";
-import { api } from "../api";
-import CreateAlbumModal from "./CreateAlbumModal";
-import EditAlbumModal from "./EditAlbumModal";
-import DeleteAlbumModal from "./DeleteAlbumModal";
+import { api } from "../../api";
+import CreateAlbumModal from "../modals/CreateAlbumModal";
+import EditAlbumModal from "../modals/EditAlbumModal";
+import DeleteAlbumModal from "../modals/DeleteAlbumModal";
 import AlbumGrid from "./AlbumGrid";
-import SearchBar from "./SearchBar";
+import SearchBar from "../common/SearchBar";
 
 function AlbumCard({ album, index, onEdit, onDelete, onClick, onDownload, onCancelDownload, isDownloading }) {
   const [isHovered, setIsHovered] = useState(false);

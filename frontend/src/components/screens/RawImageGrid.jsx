@@ -4,17 +4,19 @@ import { useState, useMemo, useRef, useEffect } from "react";
 
 import { Virtuoso } from "react-virtuoso";
 
-import { processTimelineData } from "../utils/timelineUtils";
+import { processTimelineData } from "../../utils/timelineUtils";
 
-import ImageViewer from "./ImageViewer";
-import AddToAlbumModal from "./AddToAlbumModal";
+import RawImageViewer from "../viewers/RawImageViewer";
+import AddToAlbumModal from "../modals/AddToAlbumModal";
 
-import FavoriteButton from "./FavoriteButton";
-import ShareButton from "./ShareButton";
-import DownloadButton from "./DownloadButton";
-import DeleteButton from "./DeleteButton";
+import { api } from "../../api";
 
-function PhotoCard({ photo, index, onClick, onFavoriteToggle, onDelete }) {
+import FavoriteButton from "../buttons/FavoriteButton";
+import ShareButton from "../buttons/ShareButton";
+import DownloadButton from "../buttons/DownloadButton";
+import DeleteButton from "../buttons/DeleteButton";
+
+function RawImageCard({ rawImage, index, onClick, onFavoriteToggle, onDelete }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -55,23 +57,23 @@ ${
 `}
       >
         {/* Floating Favorite Button - Top Right (when favorited) */}
-        {photo.is_favorite && (
+        {rawImage.is_favorite && (
           <div className="absolute top-3 right-3 z-10">
             <FavoriteButton 
-              id={photo.id}
-              type="image"
-              initialFavorite={photo.is_favorite}
+              id={rawImage.id}
+              type="raw"
+              initialFavorite={rawImage.is_favorite}
               size="small"
               onToggle={onFavoriteToggle}
             />
           </div>
         )}
 
-        {/* Image */}
+        {/* Image Thumbnail */}
 
         <img
-          src={photo.thumbnail_url}
-          alt={photo.filename}
+          src={api.getRawThumbnailUrl(rawImage.id)}
+          alt={rawImage.filename}
           className="w-full h-full object-cover"
           loading="eager"
           decoding="async"
@@ -103,9 +105,9 @@ ${isHovered ? "opacity-100" : "opacity-0"}
           <div className="space-y-1">
             {/* Dynamically render location only if available */}
 
-            {(photo.city || photo.state || photo.country) && (
+            {(rawImage.city || rawImage.state || rawImage.country) && (
               <p className="text-white font-semibold text-sm tracking-wide drop-shadow-lg">
-                {[photo.city, photo.state, photo.country]
+                {[rawImage.city, rawImage.state, rawImage.country]
                   .filter(Boolean)
                   .join(", ")}
               </p>
@@ -113,9 +115,16 @@ ${isHovered ? "opacity-100" : "opacity-0"}
 
             {/* Camera metadata if available */}
 
-            {photo.metadata?.camera_model && (
+            {rawImage.metadata?.camera_model && (
               <p className="text-purple-300 dark:text-cyan-300 text-xs font-bold flex items-center gap-1">
-                {photo.metadata.camera_model}
+                {rawImage.metadata.camera_model}
+              </p>
+            )}
+
+            {/* Lens info if available */}
+            {rawImage.metadata?.lens_model && (
+              <p className="text-purple-200 dark:text-cyan-200 text-xs flex items-center gap-1">
+                {rawImage.metadata.lens_model}
               </p>
             )}
           </div>
@@ -124,74 +133,42 @@ ${isHovered ? "opacity-100" : "opacity-0"}
 
           <div className="flex items-center gap-2 mt-3">
             <FavoriteButton 
-              id={photo.id}
-              type="image"
-              initialFavorite={photo.is_favorite}
+              id={rawImage.id}
+              type="raw"
+              initialFavorite={rawImage.is_favorite}
               size="small"
               onToggle={onFavoriteToggle}
             />
 
             <ShareButton 
-              id={photo.id}
-              type="image"
+              id={rawImage.id}
+              type="raw"
               size="small"
             />
 
             <DownloadButton 
-              id={photo.id}
-              type="image"
+              id={rawImage.id}
+              type="raw"
               size="small"
             />
 
             <div className="flex-1" />
 
             <DeleteButton 
-              id={photo.id}
-              type="image"
+              id={rawImage.id}
+              type="raw"
               size="small"
               onSuccess={onDelete}
             />
           </div>
         </motion.div>
-
-        {/* Glow Effect on Hover */}
-
-        {/* <motion.div
-
-animate={{
-
-opacity: isHovered ? [0.3, 0.6, 0.3] : 0,
-
-}}
-
-transition={{
-
-duration: glowDuration,
-
-repeat: Infinity,
-
-ease: 'easeInOut',
-
-delay: glowDelay,
-
-}}
-
-className="absolute inset-0 bg-gradient-to-br
-
-from-purple-400/20 via-transparent to-indigo-400/20
-
-dark:from-cyan-500/20 dark:via-transparent dark:to-teal-500/20
-
-pointer-events-none"
-
-/> */}
       </div>
     </motion.div>
   );
 }
 
-export default function PhotoGrid({
-  photos = [],
+export default function RawImageGrid({
+  rawImages = [],
   loading = false,
   searchQuery = "",
   onLoadMore,
@@ -202,33 +179,31 @@ export default function PhotoGrid({
   onLocationUpdate,
   onDelete
 }) {
-  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [selectedRawImage, setSelectedRawImage] = useState(null);
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
 
   const virtuosoRef = useRef(null);
 
-  const sortedPhotos = useMemo(() => {
-    return [...photos].sort((a, b) => {
+  const sortedRawImages = useMemo(() => {
+    return [...rawImages].sort((a, b) => {
       const dateA = new Date(a.date || a.capture_date || 0);
       const dateB = new Date(b.date || b.capture_date || 0);
       return dateB - dateA; // Descending (Newest first)
     });
-  }, [photos]);
+  }, [rawImages]);
 
-  // Process photos into timeline rows (Year > Month > Photo rows)
+  // Process raw images into timeline rows (Year > Month > Photo rows)
 
-  const timelineRows = useMemo(() => processTimelineData(sortedPhotos, 5), [sortedPhotos]);
+  const timelineRows = useMemo(() => processTimelineData(sortedRawImages, 5), [sortedRawImages]);
 
-  const getSortedIndex = (photo) => sortedPhotos.findIndex((p) => p.id === photo.id);
+  const getSortedIndex = (rawImage) => sortedRawImages.findIndex((r) => r.id === rawImage.id);
 
   useEffect(() => {
-    if (selectedPhoto && virtuosoRef.current) {
-        // A. Find which "Row" contains this photo
+    if (selectedRawImage && virtuosoRef.current) {
+        // A. Find which "Row" contains this raw image
         const rowIndex = timelineRows.findIndex(row => 
-            row.type === 'photos' && row.items.some(p => p.id === selectedPhoto.id)
+            row.type === 'photos' && row.items.some(r => r.id === selectedRawImage.id)
         );
-
-        console.log("Syncing Scroll:", { photoId: selectedPhoto.id, rowIndex }); // <--- DEBUG LOG
 
         // B. Scroll the background to that row (centered)
         if (rowIndex !== -1) {
@@ -239,29 +214,29 @@ export default function PhotoGrid({
             });
         }
     }
-  }, [selectedPhoto, timelineRows]); // Run whenever photo changes
+  }, [selectedRawImage, timelineRows]); // Run whenever raw image changes
 
-  const handlePhotoClick = (photo) => {
-    setSelectedPhoto(photo);
+  const handleRawImageClick = (rawImage) => {
+    setSelectedRawImage(rawImage);
   };
 
   const handleClose = () => {
-    setSelectedPhoto(null);
+    setSelectedRawImage(null);
   };
 
   const handleNext = () => {
-    const currentIdx = getSortedIndex(selectedPhoto);
+    const currentIdx = getSortedIndex(selectedRawImage);
 
-    if (currentIdx !== -1 && currentIdx < sortedPhotos.length - 1) {
-      setSelectedPhoto(sortedPhotos[currentIdx + 1]);
+    if (currentIdx !== -1 && currentIdx < sortedRawImages.length - 1) {
+      setSelectedRawImage(sortedRawImages[currentIdx + 1]);
     }
   };
 
   const handlePrev = () => {
-    const currentIdx = getSortedIndex(selectedPhoto);
+    const currentIdx = getSortedIndex(selectedRawImage);
 
     if (currentIdx > 0) {
-      setSelectedPhoto(sortedPhotos[currentIdx - 1]);
+      setSelectedRawImage(sortedRawImages[currentIdx - 1]);
     }
   };
 
@@ -297,14 +272,14 @@ export default function PhotoGrid({
 
   // --- Loading State ---
 
-  if (loading && photos.length === 0) {
+  if (loading && rawImages.length === 0) {
     return (
       <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-600/30 dark:border-cyan-400/30 border-t-purple-600 dark:border-t-cyan-400 rounded-full animate-spin mx-auto mb-4" />
 
           <p className="text-slate-600 dark:text-white/50 text-lg">
-            Loading your memories...
+            Loading your RAW files...
           </p>
         </div>
       </div>
@@ -329,22 +304,21 @@ export default function PhotoGrid({
   }
   // --- Empty State ---
 
-  else if (!loading && (!photos || photos.length === 0)) {
+  else if (!loading && (!rawImages || rawImages.length === 0)) {
     return (
       <div className="min-h-screen pt-32 pb-16 px-8 pl-[calc(240px+6rem)] flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-600 dark:text-white/50 text-lg">
-            No {searchQuery ? `"${formatSearchQuery(searchQuery)}"` : ""} photos found in Haven Vault
+            No {searchQuery ? `"${formatSearchQuery(searchQuery)}"` : ""} RAW images found in Haven Vault
           </p>
-
           {searchQuery ? (
             <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
               Try searching for something else!
             </p>
           ) : (
-            <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
-              Upload some photos to get started!
-            </p>
+          <p className="text-slate-400 dark:text-white/30 text-sm mt-2">
+            Upload some RAW files to get started!
+          </p>
           )}
         </div>
       </div>
@@ -374,15 +348,15 @@ dark:from-white dark:via-cyan-100 dark:to-teal-100
 bg-clip-text text-transparent mb-2"
           >
             {searchQuery
-              ? `Searching: "${formatSearchQuery(searchQuery)}" in Your Photos`
-              : "Your Photos"}
+              ? `Searching: "${formatSearchQuery(searchQuery)}" in Your RAW Images`
+              : "Your RAW Images"}
           </h1>
 
           <p className="text-slate-600 dark:text-white/50 text-lg">
             <span className="font-semibold text-purple-600 dark:text-cyan-400">
               {totalCount}
             </span>{" "}
-            {searchQuery ? "search results" : "photos"} in Haven Vault
+            {searchQuery ? "search results" : "RAW images"} in Haven Vault
           </p>
         </div>
       </motion.div>
@@ -428,12 +402,12 @@ bg-clip-text text-transparent mb-2"
           if (row.type === "photos") {
             return (
               <div className="flex gap-4 mb-4 mt-4">
-                {row.items.map((photo, i) => (
-                  <div key={photo.id} className="flex-1 min-w-0">
-                    <PhotoCard
-                      photo={photo}
+                {row.items.map((rawImage, i) => (
+                  <div key={rawImage.id} className="flex-1 min-w-0">
+                    <RawImageCard
+                      rawImage={rawImage}
                       index={i}
-                      onClick={() => handlePhotoClick(photo)}
+                      onClick={() => handleRawImageClick(rawImage)}
                       onFavoriteToggle={onFavoriteToggle}
                       onDelete={onDelete}
                     />
@@ -455,14 +429,14 @@ bg-clip-text text-transparent mb-2"
 
       {/* Image Viewer */}
 
-      {selectedPhoto && (
-        <ImageViewer
-          photo={selectedPhoto}
+      {selectedRawImage && (
+        <RawImageViewer
+          rawImage={selectedRawImage}
           onClose={handleClose}
           onNext={handleNext}
           onPrev={handlePrev}
-          currentIndex={getSortedIndex(selectedPhoto)}
-          totalPhotos={totalCount}
+          currentIndex={getSortedIndex(selectedRawImage)}
+          totalRawImages={totalCount}
           onFavoriteToggle={onFavoriteToggle}
           onLocationUpdate={onLocationUpdate}
           onDelete={onDelete}
@@ -472,15 +446,16 @@ bg-clip-text text-transparent mb-2"
       )}
 
       {/* AddToAlbumModal */}
-      {selectedPhoto && (
+      {selectedRawImage && (
         <AddToAlbumModal
           isOpen={isAddToAlbumModalOpen}
           onClose={() => setIsAddToAlbumModalOpen(false)}
-          fileId={selectedPhoto.id}
-          fileType="image"
-          fileName={selectedPhoto.filename}
+          fileId={selectedRawImage.id}
+          fileType="raw"
+          fileName={selectedRawImage.filename}
         />
       )}
     </div>
   );
 }
+

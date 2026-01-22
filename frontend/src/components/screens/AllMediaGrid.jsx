@@ -2,17 +2,17 @@ import { motion } from "framer-motion";
 import { Play, Pause } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { processTimelineData } from "../utils/timelineUtils";
-import ImageViewer from "./ImageViewer";
-import VideoViewer from "./VideoViewer";
-import RawImageViewer from "./RawImageViewer";
-import AddToAlbumModal from "./AddToAlbumModal";
-import { api } from "../api";
-import formatTime from "../utils/timeUtils";
-import FavoriteButton from "./FavoriteButton";
-import ShareButton from "./ShareButton";
-import DownloadButton from "./DownloadButton";
-import DeleteButton from "./DeleteButton";
+import { processTimelineData } from "../../utils/timelineUtils";
+import ImageViewer from "../viewers/ImageViewer";
+import VideoViewer from "../viewers/VideoViewer";
+import RawImageViewer from "../viewers/RawImageViewer";
+import AddToAlbumModal from "../modals/AddToAlbumModal";
+import { api } from "../../api";
+import formatTime from "../../utils/timeUtils";
+import FavoriteButton from "../buttons/FavoriteButton";
+import ShareButton from "../buttons/ShareButton";
+import DownloadButton from "../buttons/DownloadButton";
+import DeleteButton from "../buttons/DeleteButton";
 
 // PhotoCard component for images
 function PhotoCard({ photo, index, onClick, onFavoriteToggle, onDelete }) {

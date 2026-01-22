@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { X, Plus, Image as ImageIcon, Check } from "lucide-react";
-import { api } from "../api";
+import { api } from "../../api";
 import CreateAlbumModal from "./CreateAlbumModal";
 
 function SmallAlbumCard({ album, onSelect, isSelected, isAlreadyPartOf, onRemove }) {
